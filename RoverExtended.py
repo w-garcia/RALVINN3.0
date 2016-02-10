@@ -12,15 +12,31 @@ import cv2, numpy as np, pygame
 ## Inherits Rover base class for socket operations and movement
 class RoverExtended(Rover):
     def __init__(self):
-        Rover.__init__(self)
-        print self.get_battery_percentage()
+    #    Rover.__init__(self)
+    #    print self.get_battery_percentage()
         pygame.init()
         #self.file_name = 'filename'
         self.quit = False
         self.image = None
-        self.run()
-        self.close()
+        self.conditionalRun()
+    #    self.run()
+     #   self.close()
 
+
+    def conditionalRun(self):
+        choice = raw_input("Run with Rover or Webcam? Enter R or W")
+        if choice == "R":
+            self.run()
+        else:
+            self.runWebcam()
+
+
+    def runWebcam(self):
+        while not self.quit:
+            self.image = cv2.VideoCapture()
+            self.process_video_from_rover()
+        self.quit = True
+        pygame.quit()
 
     def run(self):
         sleep(1.5)
@@ -129,12 +145,15 @@ class RoverExtended(Rover):
                 # Or green if it is inside the middle third
                 if cx <= imgWidth / 3:
                     contourColor = ((0,0,255))
+                    #TODO: Implement NN here
                     self.set_wheel_treads(0,1)
                 elif cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
                     contourColor = ((0,255,0))
+                    #TODO: Implement NN here
                     self.set_wheel_treads(1,1)
                 else:
                     contourColor = ((0,0,255))
+                    #TODO: Implement NN here
                     self.set_wheel_treads(1,0)
 
                     #Draw contours onto the final image
