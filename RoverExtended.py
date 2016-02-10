@@ -12,11 +12,17 @@ import cv2, numpy as np, pygame
 ## Inherits Rover base class for socket operations and movement
 class RoverExtended(Rover):
     def __init__(self):
+<<<<<<< HEAD
+=======
+        #Rover.__init__(self)
+        #print self.get_battery_percentage()
+>>>>>>> 1bfb0a4496daf1959abb64592bb0c81872220295
         pygame.init()
         #self.file_name = 'filename'
         self.mode = None
         self.quit = False
         self.image = None
+<<<<<<< HEAD
         self.conditionalRun()
 
 
@@ -37,6 +43,11 @@ class RoverExtended(Rover):
             print("Qutting.\n")
             self.quit = True
             self.run()
+=======
+        #self.run()
+        #self.close()
+
+>>>>>>> 1bfb0a4496daf1959abb64592bb0c81872220295
 
     def run(self):
         sleep(1.5)
@@ -184,6 +195,7 @@ class RoverExtended(Rover):
                 # Or green if it is inside the middle third
                 if cx <= imgWidth / 3:
                     contourColor = ((0,0,255))
+<<<<<<< HEAD
                     if self.mode == "R": self.set_wheel_treads(0,1)
                 elif cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
                     contourColor = ((0,255,0))
@@ -191,6 +203,15 @@ class RoverExtended(Rover):
                 else:
                     contourColor = ((0,0,255))
                     if self.mode == "R": self.set_wheel_treads(1,0)
+=======
+                    #self.set_wheel_treads(0,1)
+                elif cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
+                    contourColor = ((0,255,0))
+                    #self.set_wheel_treads(1,1)
+                else:
+                    contourColor = ((0,0,255))
+                    #self.set_wheel_treads(1,0)
+>>>>>>> 1bfb0a4496daf1959abb64592bb0c81872220295
 
                     #Draw contours onto the final image
                 try:
@@ -205,10 +226,18 @@ class RoverExtended(Rover):
             else:
                 #self.set_wheel_treads(0,0)
                 pass
+<<<<<<< HEAD
 
+=======
+>>>>>>> 1bfb0a4496daf1959abb64592bb0c81872220295
 
             if len(Ocontours) != 0:
 
+<<<<<<< HEAD
+=======
+            if len(Ocontours) != 0:
+
+>>>>>>> 1bfb0a4496daf1959abb64592bb0c81872220295
                 #Find the moments of the first contour
                 cnt = []
                 M = []
