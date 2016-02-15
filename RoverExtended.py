@@ -46,7 +46,8 @@ class RoverExtended(Rover):
         pygame.quit()
 
     def runWebcam(self):
-        cap = cv2.VideoCapture(0)
+        webcam_port = 1 #adjust depending on hardware configuration
+        cap = cv2.VideoCapture(webcam_port)
         while not self.quit:
             _, self.image = cap.read()
             self.TO()
@@ -55,7 +56,7 @@ class RoverExtended(Rover):
     Omasks = []
 
     def TO(self):
-             # Take each frame
+                     # Take each frame
             frame = self.image
 
             imgHeight,imgWidth, imgChannels = frame.shape
@@ -65,11 +66,11 @@ class RoverExtended(Rover):
             cv2.imshow("hsv", hsv)
 
             # define range of each color in HSV
-            lower_orange = np.array([9,100,100])
-            upper_orange = np.array([17,256,256])
+            lower_orange = np.array([153,70,168])
+            upper_orange = np.array([140,256,256])
 
-            lower_pink = np.array([145,50,50])
-            upper_pink = np.array([178,255,255])
+            lower_pink = np.array([147,95,150])
+            upper_pink = np.array([227,255,255])
 
 
             # Threshold the HSV image to get only colors we want
@@ -80,17 +81,7 @@ class RoverExtended(Rover):
             Pres = cv2.bitwise_and(frame,frame,mask = Pmask)
 
             #show the result with no noise filtering
-            self.Pmasks.append(Pres)
-
-            if len(self.Pmasks) > 3:
-                mask1, mask2, mask3 = self.Pmasks[-1], self.Pmasks[-2], self.Pmasks[-3]
-                mask2 = cv2.bitwise_and(mask1, mask2)
-                Pres = cv2.bitwise_and(mask2, mask3)
-                cv2.imshow('Pmask1',Pres)
-                del self.Pmasks[0]
-
-            Prawcopy = Pres
-
+            cv2.imshow('Pmask1',Pres)
 
             #Seed the kernel, any (x,x) collection of pixels that is not completely filled will be filtered out
             kernel = np.ones((5,5),np.uint8)
@@ -99,15 +90,8 @@ class RoverExtended(Rover):
             Pres = cv2.morphologyEx(Pres, cv2.MORPH_OPEN, kernel)
             Pres = cv2.morphologyEx(Pres, cv2.MORPH_CLOSE, kernel)
 
-            self.Omasks.append(Ores)
+            cv2.imshow('0mask1',Pres)
 
-            if len(self.Omasks) > 3:
-                mask1, mask2, mask3 = self.Omasks[-1], self.Omasks[-2], self.Omasks[-3]
-                mask2 = cv2.bitwise_and(mask1, mask2)
-                Ores = cv2.bitwise_and(mask2, mask3)
-                cv2.imshow('Omask1',Ores)
-                del self.Omasks[0]
-            Orawcopy = Ores
             kernel = np.ones((9,9),np.uint8)
             Ores = cv2.morphologyEx(Ores, cv2.MORPH_CLOSE, kernel)
 
@@ -137,17 +121,9 @@ class RoverExtended(Rover):
             # Create an image with the noise filtered mask
             Pimage = Pmask2
             Oimage = Omask2
-
-            Orawcopy = cv2.cvtColor(Orawcopy, cv2.COLOR_BGR2GRAY)
-            Prawcopy = cv2.cvtColor(Prawcopy, cv2.COLOR_BGR2GRAY)
-
             # Find the contours of the masked image
-            #Pimage, Pcontours, Phierarchy = cv2.findContours(Pimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-            Pimage, Pcontours, Phierarchy = cv2.findContours(Prawcopy,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-
-            #Oimage, Ocontours, Ohierarchy = cv2.findContours(Oimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-            Oimage, Ocontours, Ohierarchy = cv2.findContours(Orawcopy,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-
+            Pimage, Pcontours, Phierarchy = cv2.findContours(Pimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+            Oimage, Ocontours, Ohierarchy = cv2.findContours(Oimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
 
             if len(Pcontours) != 0:
 
@@ -155,7 +131,6 @@ class RoverExtended(Rover):
                 cnt = []
                 M = []
                 highestArea = 0
-                biggestCnt = 0
                 for i in range(len(Pcontours)):
                     cnt.append(Pcontours[i])
                     M.append(cv2.moments(cnt[i]))
@@ -163,13 +138,9 @@ class RoverExtended(Rover):
                     if cntArea > highestArea:
                         highestArea = cntArea
                         biggestCnt = i
-                cx, cy = 0, 0
                 # Use the moments to find the center x and center y
-                try:
-                    cx = int(M[biggestCnt]['m10']/M[biggestCnt]['m00'])
-                    cy = int(M[biggestCnt]['m01']/M[biggestCnt]['m00'])
-                except:
-                    pass
+                cx = int(M[biggestCnt]['m10']/M[biggestCnt]['m00'])
+                cy = int(M[biggestCnt]['m01']/M[biggestCnt]['m00'])
 
                 #Convert cx and cx to strings for output
                 scx = str(cx)
@@ -184,79 +155,60 @@ class RoverExtended(Rover):
                 # Or green if it is inside the middle third
                 if cx <= imgWidth / 3:
                     contourColor = ((0,0,255))
+                    #TODO: Implement NN here
                     if self.mode == "R": self.set_wheel_treads(0,1)
                 elif cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
                     contourColor = ((0,255,0))
+                    #TODO: Implement NN here
                     if self.mode == "R": self.set_wheel_treads(1,1)
                 else:
                     contourColor = ((0,0,255))
+                    #TODO: Implement NN here
                     if self.mode == "R": self.set_wheel_treads(1,0)
+
                     #Draw contours onto the final image
-                try:
-                    img = cv2.drawContours(img, Pcontours[biggestCnt], -1, contourColor, 3)
-                #img = cv2.drawContours(img, hull, -1, contourColor, 3)
-                except:
-                    pass
+                img = cv2.drawContours(img, Pcontours[i], -1, contourColor, 3)
 
                     #Draw center point
                 img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
 
             else:
-                #self.set_wheel_treads(0,0)
-                pass
-            if len(Ocontours) != 0:
+                if self.mode == "R": self.set_wheel_treads(0,0)
 
-                #Find the moments of the first contour
+
+            #Orange is not up to date so I disabled it
+            if len(Ocontours) == -1 :
+                 #Find the moments of the first contour
                 cnt = []
                 M = []
-                highestArea = 0
                 for i in range(len(Ocontours)):
                     cnt.append(Ocontours[i])
                     M.append(cv2.moments(cnt[i]))
-                    cntArea = cv2.contourArea(cnt[i])
-                    if cntArea > highestArea:
-                        highestArea = cntArea
-                        biggestCnt = i
-                cx, cy = 0, 0
-                try:
                 # Use the moments to find the center x and center y
-                    cx = int(M[biggestCnt]['m10']/M[biggestCnt]['m00'])
-                    cy = int(M[biggestCnt]['m01']/M[biggestCnt]['m00'])
-                except:
-                    pass
+                    try:
+                        cx = int(M[i]['m10']/M[i]['m00'])
+                        cy = int(M[i]['m01']/M[i]['m00'])
 
+                    except:
+                        print("Too many orange objects")
                 #Convert cx and cx to strings for output
-                scx = str(cx)
-                scy = str(cy)
-                location = "( " + scx + ", " + scy + ")"
+                    scx = str(cx)
+                    scy = str(cy)
+                    location = "( " + scx + ", " + scy + ")"
 
                 # put text onto the final image at the center of the contour
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(img,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    cv2.putText(img,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
 
-                #Change contour outline to Red if the center is outside the middle third
-                # Or green if it is inside the middle third
-                if cx <= imgWidth / 3:
                     contourColor = ((0,0,255))
-                    #self.set_wheel_treads(0,1)
-                elif cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
-                    contourColor = ((0,255,0))
-                    #self.set_wheel_treads(1,1)
-                else:
-                    contourColor = ((0,0,255))
-                    #self.set_wheel_treads(1,0)
 
                     #Draw contours onto the final image
-                try:
-                    img = cv2.drawContours(img, Ocontours[biggestCnt], -1, contourColor, 3)
-                except:
-                    pass
-                    #Draw center point
-                img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
+                    img = cv2.drawContours(img, Ocontours[i], -1, contourColor, 3)
 
-            else:
-                #self.set_wheel_treads(0,0)
-                pass
+                    #Draw center point
+                    img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
+
+                    #self.rover.setTreads(1,0)
 
 
 
@@ -280,8 +232,7 @@ class RoverExtended(Rover):
             if k == 27:
                 self.close()
             elif k == 115:
-                #self.set_wheel_treads(0,0)
-                pass
+                self.set_wheel_treads(0,0)
 
 
     def process_video_from_rover(self, jpegbytes, timestamp_10msec):
