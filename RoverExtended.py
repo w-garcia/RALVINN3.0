@@ -42,15 +42,22 @@ class RoverExtended(Rover):
         sleep(1.5)
         while not self.quit:
             self.process_video_from_rover()
+
         self.quit = True
         pygame.quit()
 
     def runWebcam(self):
-        webcam_port = 1 #adjust depending on hardware configuration
+        #adjust depending on hardware configuration
+        webcam_port = int(raw_input("Enter Webcam Port integer (0 for majority of cases): "))
         cap = cv2.VideoCapture(webcam_port)
         while not self.quit:
             _, self.image = cap.read()
+            if self.image == None:
+                print("Unable to read image from webcam, try selecting a different port.")
+                break
             self.TO()
+            if cv2.waitKey(5) & 0xFF == ord('q'):
+                break
 
     Pmasks = []
     Omasks = []
