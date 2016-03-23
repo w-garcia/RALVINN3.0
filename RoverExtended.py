@@ -3,64 +3,32 @@
 # Based on Object-Tracking by mmcguire24
 # Authored Jan 24 2016
 
-from time import sleep
 from rover import Rover
-#from RoverControl import *
-import cv2, numpy as np, pygame
+import cv2, numpy as np
+from time import sleep
 
 # RoverExended handles video processing and is the main entry point once initiated in main.py
 ## Inherits Rover base class for socket operations and movement
 class RoverExtended(Rover):
-    def __init__(self):
-        pygame.init()
+    def __init__(self, mode):
         #self.file_name = 'filename'
-        self.mode = None
-        self.quit = False
+        self.mode = mode
         self.image = None
-        self.conditionalRun()
-
-
-    def conditionalRun(self):
-        choice = raw_input("Use Rover or Webcam? Enter R or W: ").upper()
-        if choice == "R":
-            print("Running with rover.\n")
-            self.mode = "R"
+        if (mode == "R"):
             Rover.__init__(self)
-            print(self.get_battery_percentage())
-            self.run()
-            self.close()
-        elif choice == "W":
-            print("Running with webcam.\n")
-            self.mode = "W"
-            self.runWebcam()
-        else:
-            print("Qutting.\n")
-            self.quit = True
-            self.run()
-
-    def run(self):
-        sleep(1.5)
-        while not self.quit:
-            self.process_video_from_rover()
-
-        self.quit = True
-        pygame.quit()
-
-    def runWebcam(self):
-        #adjust depending on hardware configuration
-        webcam_port = int(raw_input("Enter Webcam Port integer (0 for majority of cases): "))
-        cap = cv2.VideoCapture(webcam_port)
-        while not self.quit:
-            _, self.image = cap.read()
-            if self.image == None:
-                print("Unable to read image from webcam, try selecting a different port.")
-                break
-            self.TO()
-            if cv2.waitKey(5) & 0xFF == ord('q'):
-                break
 
     Pmasks = []
     Omasks = []
+
+    def turn_left(self, duration_in_seconds):
+        self.set_wheel_treads(1, -1)
+        sleep(duration_in_seconds)
+        self.set_wheel_treads(0, 0)
+
+    def turn_right(self, duration_in_seconds):
+        self.set_wheel_treads(-1, 1)
+        sleep(duration_in_seconds)
+        self.set_wheel_treads(0, 0)
 
     def TO(self):
         # Take each frame
@@ -70,7 +38,7 @@ class RoverExtended(Rover):
         # Convert BGR to HSV
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        cv2.imshow("hsv", hsv)
+        #cv2.imshow("hsv", hsv)
 
         # define range of each color in HSV
         lower_orange = np.array([153,70,168])
@@ -88,7 +56,7 @@ class RoverExtended(Rover):
         Pres = cv2.bitwise_and(frame,frame,mask = Pmask)
 
         #show the result with no noise filtering
-        cv2.imshow('Pmask1',Pres)
+        #cv2.imshow('Pmask1',Pres)
 
         #Seed the kernel, any (x,x) collection of pixels that is not completely filled will be filtered out
         kernel = np.ones((5,5),np.uint8)
@@ -97,7 +65,7 @@ class RoverExtended(Rover):
         Pres = cv2.morphologyEx(Pres, cv2.MORPH_OPEN, kernel)
         Pres = cv2.morphologyEx(Pres, cv2.MORPH_CLOSE, kernel)
 
-        cv2.imshow('0mask1',Pres)
+        #cv2.imshow('0mask1',Pres)
 
         kernel = np.ones((9,9),np.uint8)
         Ores = cv2.morphologyEx(Ores, cv2.MORPH_CLOSE, kernel)
@@ -132,55 +100,52 @@ class RoverExtended(Rover):
         Pimage, Pcontours, Phierarchy = cv2.findContours(Pimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
         Oimage, Ocontours, Ohierarchy = cv2.findContours(Oimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
 
-        if len(Pcontours) != 0:
+        if len(Pcontours) == 0:
+            return int(0b000), img
 
-            #Find the moments of the first contour
-            cnt = []
-            M = []
-            highestArea = 0
-            for i in range(len(Pcontours)):
-                cnt.append(Pcontours[i])
-                M.append(cv2.moments(cnt[i]))
-                cntArea = cv2.contourArea(cnt[i])
-                if cntArea > highestArea:
-                    highestArea = cntArea
-                    biggestCnt = i
-            # Use the moments to find the center x and center y
-            cx = int(M[biggestCnt]['m10']/M[biggestCnt]['m00'])
-            cy = int(M[biggestCnt]['m01']/M[biggestCnt]['m00'])
+        #Find the moments of the first contour
+        cnt = []
+        M = []
+        highestArea = 0
+        for i in range(len(Pcontours)):
+            cnt.append(Pcontours[i])
+            M.append(cv2.moments(cnt[i]))
+            cntArea = cv2.contourArea(cnt[i])
+            if cntArea > highestArea:
+                highestArea = cntArea
+                biggestCnt = i
+        # Use the moments to find the center x and center y
+        cx = int(M[biggestCnt]['m10']/M[biggestCnt]['m00'])
+        cy = int(M[biggestCnt]['m01']/M[biggestCnt]['m00'])
 
-            #Convert cx and cx to strings for output
-            scx = str(cx)
-            scy = str(cy)
-            location = "( " + scx + ", " + scy + ")"
+        #Convert cx and cx to strings for output
+        scx = str(cx)
+        scy = str(cy)
+        location = "( " + scx + ", " + scy + ")"
 
-            # put text onto the final image at the center of the contour
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(img,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
+        # put text onto the final image at the center of the contour
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(img,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
 
-            #Change contour outline to Red if the center is outside the middle third
-            # Or green if it is inside the middle third
-            if cx <= imgWidth / 3:
-                contourColor = ((0,0,255))
-                #TODO: Implement NN here
-                if self.mode == "R": self.set_wheel_treads(0,1)
-            elif cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
-                contourColor = ((0,255,0))
-                #TODO: Implement NN here
-                if self.mode == "R": self.set_wheel_treads(1,1)
-            else:
-                contourColor = ((0,0,255))
-                #TODO: Implement NN here
-                if self.mode == "R": self.set_wheel_treads(1,0)
+        state = 0b000
 
-                #Draw contours onto the final image
-            img = cv2.drawContours(img, Pcontours[i], -1, contourColor, 3)
+        #Change contour outline to Red if the center is outside the middle third
+        # Or green if it is inside the middle third
+        if cx <= imgWidth / 3:
+            contourColor = ((0,0,255))
+            state |= 0b100
+        if cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
+            contourColor = ((0,255,0))
+            state |= 0b010
+        if cx > 2 * imgWidth / 3:
+            contourColor = ((0,0,255))
+            state |= 0b001
 
-                #Draw center point
-            img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
+            #Draw contours onto the final image
+        img = cv2.drawContours(img, Pcontours[i], -1, contourColor, 3)
 
-        else:
-            if self.mode == "R": self.set_wheel_treads(0,0)
+            #Draw center point
+        img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
 
 
         #Orange is not up to date so I disabled it
@@ -222,7 +187,7 @@ class RoverExtended(Rover):
         img = cv2.line(img,(imgWidth/3,0),(imgWidth/3,511),(255,0,0),5)
         img = cv2.line(img,(2*imgWidth/3,0),(2*imgWidth/3,511),(255,0,0),5)
 
-        cv2.imshow('Tracking Results',img)
+        #cv2.imshow('Tracking Results',img)
         #cv2.imshow('Camera HSV',hsv)
         #cv2.imshow('Orange Mask',Omask2)
         #cv2.imshow('Pink Mask',Pres)
@@ -231,22 +196,20 @@ class RoverExtended(Rover):
 
         # End program if esc is pressed or show moments and
         # Number of contours is 's' is pressed
-        k = cv2.waitKey(5) & 0xFF
-        if k == 27:
-            self.close()
-        elif k == 115:
-            self.set_wheel_treads(0, 0)
 
+        return int(state), img
 
     def process_video_from_rover(self, jpegbytes, timestamp_10msec):
-        #try:
-            #sleep(.5)
-            window_name = 'Machine Perception and Cognitive Robotics'
-            array_of_bytes = np.fromstring(jpegbytes, np.uint8)
-            self.image = cv2.imdecode(array_of_bytes, flags=3)
-             # waitkey cannot be zero
-            #cv2.waitKey(30)
-            self.TO()
-        #except:
-           # print("Could not find OpenCV")
+        array_of_bytes = np.fromstring(jpegbytes, np.uint8)
+        self.image = cv2.imdecode(array_of_bytes, flags=3)
+        return self.TO()
 
+    def process_video_from_webcam(self, webcam_port):
+        cap = cv2.VideoCapture(webcam_port)
+        _, self.image = cap.read()
+        if self.image is None:
+            print("Unable to read image from webcam, try selecting a different port.")
+            return -1, None
+        return self.TO()
+        #if cv2.waitKey(5) & 0xFF == ord('q'):
+        #    return
