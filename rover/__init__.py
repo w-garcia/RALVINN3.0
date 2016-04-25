@@ -78,9 +78,9 @@ class Rover:
         self._receive_a_command_reply_from_rover(25)
 
         # Receive images on another thread until closed
-        self.is_active = True
-        self.reader_thread = _MediaThread(self)
-        self.reader_thread.start()
+        #self.is_active = True
+        #self.reader_thread = _MediaThread(self)
+        #self.reader_thread.start()
 
         # Set up treads
         self.leftTread = _RoverTread(self, 4)

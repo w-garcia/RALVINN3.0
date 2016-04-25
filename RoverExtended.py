@@ -3,7 +3,10 @@
 # Based on Object-Tracking by mmcguire24
 # Authored Jan 24 2016
 
+from rover import adpcm
+from rover import byteutils
 from rover import Rover
+from rover import _MediaThread
 import cv2, numpy as np
 from time import sleep
 
@@ -16,6 +19,10 @@ class RoverExtended(Rover):
         self.image = None
         if (mode == "R"):
             Rover.__init__(self)
+            # Receive images on another thread until closed
+            self.is_active = True
+            self.reader_thread = MediaThreadEx(self)
+            self.reader_thread.start()
 
     Pmasks = []
     Omasks = []
@@ -33,6 +40,9 @@ class RoverExtended(Rover):
     def TO(self):
         # Take each frame
         frame = self.image
+
+        if frame is None:
+            return np.array([0, 0, 0]), frame
 
         imgHeight,imgWidth, imgChannels = frame.shape
         # Convert BGR to HSV
@@ -101,7 +111,7 @@ class RoverExtended(Rover):
         Oimage, Ocontours, Ohierarchy = cv2.findContours(Oimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
 
         if len(Pcontours) == 0:
-            return int(0b000), img
+            return np.array([0, 0, 0]), img
 
         #Find the moments of the first contour
         cnt = []
@@ -127,19 +137,19 @@ class RoverExtended(Rover):
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(img,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
 
-        state = 0b000
+        state = np.array([0, 0, 0])
 
         #Change contour outline to Red if the center is outside the middle third
         # Or green if it is inside the middle third
         if cx <= imgWidth / 3:
             contourColor = ((0,0,255))
-            state |= 0b100
+            state[0] = 1
         if cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
             contourColor = ((0,255,0))
-            state |= 0b010
+            state[1] = 1
         if cx > 2 * imgWidth / 3:
             contourColor = ((0,0,255))
-            state |= 0b001
+            state[2] = 1
 
             #Draw contours onto the final image
         img = cv2.drawContours(img, Pcontours[i], -1, contourColor, 3)
@@ -197,7 +207,10 @@ class RoverExtended(Rover):
         # End program if esc is pressed or show moments and
         # Number of contours is 's' is pressed
 
-        return int(state), img
+        return state, img
+
+    def get_rover_state(self):
+        return self.reader_thread.run()
 
     def process_video_from_rover(self, jpegbytes, timestamp_10msec):
         array_of_bytes = np.fromstring(jpegbytes, np.uint8)
@@ -213,3 +226,60 @@ class RoverExtended(Rover):
         return self.TO()
         #if cv2.waitKey(5) & 0xFF == ord('q'):
         #    return
+
+class MediaThreadEx(_MediaThread):
+    def __init__(self, rover):
+        _MediaThread.__init__(self, rover)
+
+
+    def run(self):
+        # Accumulates media bytes
+        media_bytes = ''
+
+        while(True):
+            # Grab bytes from rover, halting on failure
+            try:
+                buf = self.rover.mediasock.recv(self.buffer_size)
+            except:
+                return
+
+            # Do we have a media frame start?
+            k = buf.find('MO_V')
+
+            # Yes
+            if k >= 0:
+
+                # Already have media bytes?
+                if len(media_bytes) > 0:
+
+                    # Yes: add to media bytes up through start of new
+                    media_bytes += buf[0:k]
+
+                    # Both video and audio messages are time-stamped in 10msec units
+                    timestamp = byteutils.bytes_to_uint(media_bytes, 23)
+
+                    # Video bytes: call processing routine
+                    if ord(media_bytes[4]) == 1:
+                        return self.rover.process_video_from_rover(media_bytes[36:], timestamp)
+
+                    # Audio bytes: call processing routine: dont need this yet
+                    """
+                    else:
+                        audio_size = byteutils.bytes_to_uint(media_bytes, 36)
+                        sample_audio_size = 40 + audio_size
+                        offset = byteutils.bytes_to_short(media_bytes, sample_audio_size)
+                        index = ord(media_bytes[sample_audio_size + 2])
+                        pcmsamples = adpcm.decodeADPCMToPCM(media_bytes[40:sample_audio_size], offset, index)
+                        self.rover.process_audio_from_rover(pcmsamples, timestamp)
+                    """
+                    # Start over with new bytes
+                    media_bytes = buf[k:]
+
+                # No media bytes yet: start with new bytes
+                else:
+                    media_bytes = buf[k:]
+
+            # No: accumulate media bytes
+            else:
+
+                media_bytes += buf
