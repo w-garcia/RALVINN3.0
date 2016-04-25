@@ -1,6 +1,7 @@
 import pygame
 import theano
 import numpy as np
+from pygame.locals import *
 
 from qlearning import DeepQLearner
 from qlearning.visualize import plot_weights
@@ -15,8 +16,8 @@ discount = 0.9
 learn_rate = .001
 batch_size = 10
 rng = np.random
-replay_size = 50
-max_iter = 50
+replay_size = 100
+max_iter = 100
 epsilon = 0.2
 
 
@@ -28,20 +29,31 @@ class HumanInterface():
         self.conditional_run()
 
     def conditional_run(self):
+        print("Make a selection:")
+        print("R - Start Rover in Q-Learning mode")
+        print("W - Start in Webcam Mode")
+        print("M - Start Rover in manual operation mode")
+        choice = raw_input().upper()
         #choice = raw_input("Use Rover or Webcam? Enter R or W: ").upper()
-        choice = "R"
+        #choice = "R"
         if choice == "R":
             self.world = World("R")
+            self.run_episodes()
 
         elif choice == "W":
             self.world = World("W")
+            self.run_episodes()
+
+        elif choice == "M":
+            self.world = World("R")
+            self.run_manually()
 
         else:
             print("Qutting.\n")
             self.quit = True
 
-        self.run_episodes()
         self.world.rover.close()
+        pygame.display.quit()
         pygame.quit()
 
     def run_episodes(self):
@@ -162,4 +174,17 @@ class HumanInterface():
         # visualize the weights for each of the action nodes
         weights = agent.get_weights()
         plot_weights(weights)
+
+    def pygame_window_show(self):
+        window_width = 400
+        window_height = 400
+        pygame.display.set_caption('Pygame')
+        windowSurface = pygame.display.set_mode((window_width, window_height))
+        pygame.display.flip()
+
+    def run_manually(self):
+        self.pygame_window_show()
+        while(self.world.pygame_update_controls()):
+            self.world.get_current_state(False, True)
+            print(self.world.rover.get_battery_percentage())
 

@@ -222,15 +222,15 @@ class RoverExtended(Rover):
         _, self.image = cap.read()
         if self.image is None:
             print("Unable to read image from webcam, try selecting a different port.")
-            return -1, None
+            return np.array([0, 0, 0]), None
         return self.TO()
         #if cv2.waitKey(5) & 0xFF == ord('q'):
         #    return
 
+
 class MediaThreadEx(_MediaThread):
     def __init__(self, rover):
         _MediaThread.__init__(self, rover)
-
 
     def run(self):
         # Accumulates media bytes
