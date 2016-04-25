@@ -36,7 +36,9 @@ class HumanInterface():
         choice = raw_input().upper()
         #choice = raw_input("Use Rover or Webcam? Enter R or W: ").upper()
         #choice = "R"
+
         if choice == "R":
+            self.pygame_window_show("Q-Learning Rover Mode")
             self.world = World("R")
             self.run_episodes()
 
@@ -45,6 +47,7 @@ class HumanInterface():
             self.run_episodes()
 
         elif choice == "M":
+            self.pygame_window_show("Manual Operation Mode")
             self.world = World("R")
             self.run_manually()
 
@@ -58,6 +61,7 @@ class HumanInterface():
 
     def run_episodes(self):
         # initialize replay memory D <s, a, r, s', t> to replay size with random policy
+        print("Starting in Q-Learning mode. Hold Escape on pygame window at anytime to quit.")
         print('Initializing replay memory ... '),
         replay_memory = (
             np.zeros((replay_size, 1, input_height, input_width), dtype='int32'),
@@ -73,6 +77,9 @@ class HumanInterface():
         terminal = 0
         state = s1
         for step in range(replay_size):
+            if (not self.world.pygame_update_controls(False)):
+                print("Quitting")
+                return
             print(step)
             action = np.random.randint(2)
             state_prime, reward, terminal = self.world.act(state, action)
@@ -114,6 +121,9 @@ class HumanInterface():
         state = s2  # initialize first state... would be better to invoke current state from rover directly
         running_loss = []
         for i in range(max_iter):
+            if (not self.world.pygame_update_controls(False)):
+                print("Quitting")
+                return
             action = agent.choose_action(state, epsilon)  # choose an action using epsilon-greedy policy
             # get the new state, reward and terminal value from world
             state_prime, reward, terminal = self.world.act(state, action)
@@ -151,7 +161,7 @@ class HumanInterface():
         terminal = 0
         j = 0
         paths = np.zeros((10, 1, 1, input_height, input_width), dtype='int32')
-        while terminal == 0:
+        while terminal == 0 and self.world.pygame_update_controls(False):
             action = agent.choose_action(state, 0)
             state_prime, reward, terminal = self.world.act(state, action)
             state = state_prime
@@ -169,21 +179,18 @@ class HumanInterface():
         else:
             print('fail :(')
 
-
-
         # visualize the weights for each of the action nodes
         weights = agent.get_weights()
         plot_weights(weights)
 
-    def pygame_window_show(self):
+    def pygame_window_show(self, window_title="Pygame"):
         window_width = 400
         window_height = 400
-        pygame.display.set_caption('Pygame')
+        pygame.display.set_caption(window_title)
         windowSurface = pygame.display.set_mode((window_width, window_height))
         pygame.display.flip()
 
     def run_manually(self):
-        self.pygame_window_show()
         while(self.world.pygame_update_controls()):
             self.world.get_current_state(False, True)
             print(self.world.rover.get_battery_percentage())
