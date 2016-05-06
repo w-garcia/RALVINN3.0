@@ -9,6 +9,8 @@ from rover import Rover
 from rover import _MediaThread
 import cv2, numpy as np
 from time import sleep
+from time import clock
+from multiprocessing.pool import ThreadPool
 
 # RoverExended handles video processing and is the main entry point once initiated in main.py
 ## Inherits Rover base class for socket operations and movement
@@ -22,26 +24,36 @@ class RoverExtended(Rover):
             # Receive images on another thread until closed
             self.is_active = True
             self.reader_thread = MediaThreadEx(self)
-            self.reader_thread.start()
 
     Pmasks = []
     Omasks = []
 
     def turn_left(self, duration_in_seconds):
-        self.set_wheel_treads(1, -1)
-        sleep(duration_in_seconds)
+        start = clock()
+        end = clock()
+        while end - start < duration_in_seconds:
+            self.set_wheel_treads(-1, 1)
+            end = clock()
+
         self.set_wheel_treads(0, 0)
 
     def turn_right(self, duration_in_seconds):
-        self.set_wheel_treads(-1, 1)
-        sleep(duration_in_seconds)
+        start = clock()
+        end = clock()
+        while end - start < duration_in_seconds:
+            self.set_wheel_treads(1, -1)
+            end = clock()
+
         self.set_wheel_treads(0, 0)
 
     def TO(self):
+        #start = clock()
         # Take each frame
         frame = self.image
 
         if frame is None:
+            #end = clock()
+            #print(end - start)
             return np.array([0, 0, 0]), frame
 
         imgHeight,imgWidth, imgChannels = frame.shape
@@ -51,8 +63,8 @@ class RoverExtended(Rover):
         #cv2.imshow("hsv", hsv)
 
         # define range of each color in HSV
-        lower_orange = np.array([153,70,168])
-        upper_orange = np.array([140,256,256])
+        lower_orange = np.array([5,50,50])
+        upper_orange = np.array([15,255,255])
 
         lower_pink = np.array([147,95,150])
         upper_pink = np.array([227,255,255])
@@ -111,6 +123,8 @@ class RoverExtended(Rover):
         Oimage, Ocontours, Ohierarchy = cv2.findContours(Oimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
 
         if len(Pcontours) == 0:
+            #end = clock()
+            #print(end - start)
             return np.array([0, 0, 0]), img
 
         #Find the moments of the first contour
@@ -157,7 +171,7 @@ class RoverExtended(Rover):
             #Draw center point
         img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
 
-
+        """
         #Orange is not up to date so I disabled it
         if len(Ocontours) == -1 :
              #Find the moments of the first contour
@@ -191,7 +205,7 @@ class RoverExtended(Rover):
                 img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
 
                 #self.rover.setTreads(1,0)
-
+        """
 
         #Break the screen into thirds
         img = cv2.line(img,(imgWidth/3,0),(imgWidth/3,511),(255,0,0),5)
@@ -207,6 +221,8 @@ class RoverExtended(Rover):
         # End program if esc is pressed or show moments and
         # Number of contours is 's' is pressed
 
+        #end = clock()
+        #print(end - start)
         return state, img
 
     def get_rover_state(self):
@@ -224,8 +240,6 @@ class RoverExtended(Rover):
             print("Unable to read image from webcam, try selecting a different port.")
             return np.array([0, 0, 0]), None
         return self.TO()
-        #if cv2.waitKey(5) & 0xFF == ord('q'):
-        #    return
 
 
 class MediaThreadEx(_MediaThread):
