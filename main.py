@@ -1,4 +1,5 @@
-from HumanInterface import *
+from KivyUI import KivyApp
 
 if __name__ == '__main__':
-    human_interface = HumanInterface()
+    kvapp = KivyApp()
+    kvapp.run()

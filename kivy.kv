@@ -1,0 +1,112 @@
+#:kivy 1.9.1
+
+<WorldManip>:
+
+    lower_color: lower_controller
+    upper_color: upper_controller
+    btn_qlearning: btn_qlearning
+    btn_manual: btn_manual
+    btn_debug: btn_debug
+
+    BoxLayout:
+        size: 500, 600
+        orientation: 'vertical'
+        center_x: root.width / 2
+
+        Label:
+            size_hint_y: 0.1
+            text: 'Choose a Mode:'
+
+        GridLayout:
+            cols: 3
+            size_hint_y: 0.1
+
+            Button:
+                id: btn_qlearning
+                text: 'Q-Learning'
+
+            Button:
+                id: btn_manual
+                text: 'Manual'
+
+            Button:
+                id: btn_debug
+                text: 'OpenCV Debug'
+
+        GridLayout:
+            cols: 2
+            size_hint_y: 0.7
+
+            Label:
+                size_hint_y: 0.1
+                text: 'Lower Color'
+
+            Label:
+                size_hint_y: 0.1
+                text: 'Higher Color'
+
+            ColorController:
+                disabled: 'true'
+                id: lower_controller
+
+            ColorController:
+                disabled: 'true'
+                id: upper_controller
+
+
+<ColorController>:
+    hue: hue_kv
+    sat: sat_kv
+    value: val_kv
+
+    BoxLayout:
+        padding: 8
+        size: root.size #important
+        pos: root.pos   #important
+        orientation: 'vertical'
+
+        BoxLayout:
+            Label:
+                text: 'Hue'
+                size: self.texture_size
+
+            Label:
+                text: 'Saturation'
+                size: self.texture_size
+
+            Label:
+                text: 'Value'
+                size: self.texture_size
+
+        BoxLayout:
+            size_hint_y: '45dp'
+            padding: [0, 16, 0, 16]
+
+            Slider:
+                id: hue_kv
+                orientation: 'vertical'
+                step: 1
+                range: (0, 359)
+
+            Slider:
+                id: sat_kv
+                orientation: 'vertical'
+                step: 1
+                range: (0, 100)
+
+            Slider:
+                id: val_kv
+                orientation: 'vertical'
+                step: 1
+                range: (0, 100)
+
+
+        BoxLayout:
+            Label:
+                text: '{}'.format(hue_kv.value)
+
+            Label:
+                text: '{}'.format(sat_kv.value)
+
+            Label:
+                text: '{}'.format(val_kv.value)

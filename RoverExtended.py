@@ -25,9 +25,6 @@ class RoverExtended(Rover):
             self.is_active = True
             self.reader_thread = MediaThreadEx(self)
 
-    Pmasks = []
-    Omasks = []
-
     def turn_left(self, duration_in_seconds):
         start = clock()
         end = clock()
@@ -47,38 +44,47 @@ class RoverExtended(Rover):
         self.set_wheel_treads(0, 0)
 
     def TO(self):
-        #start = clock()
-        # Take each frame
         frame = self.image
 
+        pink_upper = np.array([227, 255, 255])
+        pink_lower = np.array([147, 95, 150])
+        pink, frame = self.get_color_state(frame, pink_lower, pink_upper)
+
+        orange_upper = np.array([15, 255, 255])
+        orange_lower = np.array([5, 50, 50])
+        orange, frame = self.get_color_state(frame, orange_lower, orange_upper)
+        """
+        purple_upper = np.array([15, 255, 255])
+        purple_lower = np.array([5, 50, 50])
+        purple, frame = self.get_color_state(frame, purple_lower, purple_upper)
+
+        green_upper = np.array([15, 255, 255])
+        green_lower = np.array([5, 50, 50])
+        green, frame = self.get_color_state(frame, green_lower, green_upper)
+        """
+        #state = [pink, orange, purple, green]
+
+        return pink, frame
+
+    def PICKER(self, lower_color, upper_color):
+        frame = self.image
+        state, frame = self.get_color_state(frame, lower_color, upper_color)
+        return state, frame
+
+    @staticmethod
+    def get_color_state(frame, lower_color, upper_color):
+
         if frame is None:
-            #end = clock()
-            #print(end - start)
             return np.array([0, 0, 0]), frame
 
         imgHeight,imgWidth, imgChannels = frame.shape
         # Convert BGR to HSV
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        #cv2.imshow("hsv", hsv)
-
-        # define range of each color in HSV
-        lower_orange = np.array([5,50,50])
-        upper_orange = np.array([15,255,255])
-
-        lower_pink = np.array([147,95,150])
-        upper_pink = np.array([227,255,255])
-
-
         # Threshold the HSV image to get only colors we want
-        Omask = cv2.inRange(hsv, lower_orange, upper_orange)
-        Pmask = cv2.inRange(hsv, lower_pink,upper_pink)
+        Pmask = cv2.inRange(hsv, lower_color, upper_color)
         # Bitwise-AND mask and original image to show thresholded images with the correct colors
-        Ores = cv2.bitwise_and(frame,frame, mask= Omask)
         Pres = cv2.bitwise_and(frame,frame,mask = Pmask)
-
-        #show the result with no noise filtering
-        #cv2.imshow('Pmask1',Pres)
 
         #Seed the kernel, any (x,x) collection of pixels that is not completely filled will be filtered out
         kernel = np.ones((5,5),np.uint8)
@@ -87,50 +93,28 @@ class RoverExtended(Rover):
         Pres = cv2.morphologyEx(Pres, cv2.MORPH_OPEN, kernel)
         Pres = cv2.morphologyEx(Pres, cv2.MORPH_CLOSE, kernel)
 
-        #cv2.imshow('0mask1',Pres)
-
-        kernel = np.ones((9,9),np.uint8)
-        Ores = cv2.morphologyEx(Ores, cv2.MORPH_CLOSE, kernel)
-
-        Ores = cv2.morphologyEx(Ores, cv2.MORPH_OPEN, kernel)
-
-
         #convert the noise filetered image back to hsv
         hsvPres = cv2.cvtColor(Pres, cv2.COLOR_BGR2HSV)
-        hsvOres = cv2.cvtColor(Ores, cv2.COLOR_BGR2HSV)
-
 
         #Create a new mask with the noise filtered image
-        Pmask2 = cv2.inRange(hsvPres, lower_pink,upper_pink)
-        Omask2 = cv2.inRange(hsvOres,lower_orange,upper_orange)
-
-        # Create image with just colors that we want
-        # Note: this is not useful for anything other than just showing the image because
-        # the colors are not broken into useful classifications
-        rres = cv2.bitwise_or(Ores,Pres)
-
-
-        # Create of copy of each video frame, all text and colors will go over
-        # this image to produce the final result
-        img = frame
-
+        Pmask2 = cv2.inRange(hsvPres, lower_color, upper_color)
 
         # Create an image with the noise filtered mask
         Pimage = Pmask2
-        Oimage = Omask2
         # Find the contours of the masked image
         Pimage, Pcontours, Phierarchy = cv2.findContours(Pimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
-        Oimage, Ocontours, Ohierarchy = cv2.findContours(Oimage,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
 
         if len(Pcontours) == 0:
             #end = clock()
             #print(end - start)
-            return np.array([0, 0, 0]), img
+            return np.array([0, 0, 0]), frame
 
         #Find the moments of the first contour
         cnt = []
         M = []
         highestArea = 0
+        biggestCnt = None
+
         for i in range(len(Pcontours)):
             cnt.append(Pcontours[i])
             M.append(cv2.moments(cnt[i]))
@@ -138,6 +122,10 @@ class RoverExtended(Rover):
             if cntArea > highestArea:
                 highestArea = cntArea
                 biggestCnt = i
+
+        if biggestCnt is None:
+            return np.array([0, 0, 0]), frame
+
         # Use the moments to find the center x and center y
         cx = int(M[biggestCnt]['m10']/M[biggestCnt]['m00'])
         cy = int(M[biggestCnt]['m01']/M[biggestCnt]['m00'])
@@ -149,7 +137,7 @@ class RoverExtended(Rover):
 
         # put text onto the final image at the center of the contour
         font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
+        cv2.putText(frame ,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
 
         state = np.array([0, 0, 0])
 
@@ -166,72 +154,30 @@ class RoverExtended(Rover):
             state[2] = 1
 
             #Draw contours onto the final image
-        img = cv2.drawContours(img, Pcontours[i], -1, contourColor, 3)
+        cv2.drawContours(frame, Pcontours[i], -1, contourColor, 3)
 
             #Draw center point
-        img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
-
-        """
-        #Orange is not up to date so I disabled it
-        if len(Ocontours) == -1 :
-             #Find the moments of the first contour
-            cnt = []
-            M = []
-            for i in range(len(Ocontours)):
-                cnt.append(Ocontours[i])
-                M.append(cv2.moments(cnt[i]))
-            # Use the moments to find the center x and center y
-                try:
-                    cx = int(M[i]['m10']/M[i]['m00'])
-                    cy = int(M[i]['m01']/M[i]['m00'])
-
-                except:
-                    print("Too many orange objects")
-            #Convert cx and cx to strings for output
-                scx = str(cx)
-                scy = str(cy)
-                location = "( " + scx + ", " + scy + ")"
-
-            # put text onto the final image at the center of the contour
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(img,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
-
-                contourColor = ((0,0,255))
-
-                #Draw contours onto the final image
-                img = cv2.drawContours(img, Ocontours[i], -1, contourColor, 3)
-
-                #Draw center point
-                img = cv2.circle(img,(cx,cy), 5, (255,0,0), -1)
-
-                #self.rover.setTreads(1,0)
-        """
+        cv2.circle(frame,(cx,cy), 5, (255,0,0), -1)
 
         #Break the screen into thirds
-        img = cv2.line(img,(imgWidth/3,0),(imgWidth/3,511),(255,0,0),5)
-        img = cv2.line(img,(2*imgWidth/3,0),(2*imgWidth/3,511),(255,0,0),5)
+        cv2.line(frame,(imgWidth/3,0),(imgWidth/3,511),(255,0,0),5)
+        cv2.line(frame,(2*imgWidth/3,0),(2*imgWidth/3,511),(255,0,0),5)
 
-        #cv2.imshow('Tracking Results',img)
-        #cv2.imshow('Camera HSV',hsv)
-        #cv2.imshow('Orange Mask',Omask2)
-        #cv2.imshow('Pink Mask',Pres)
-        #cv2.imshow('Mixed Mask',rres)
-
-
-        # End program if esc is pressed or show moments and
-        # Number of contours is 's' is pressed
-
-        #end = clock()
-        #print(end - start)
-        return state, img
+        return state, frame
 
     def get_rover_state(self):
         return self.reader_thread.run()
 
-    def process_video_from_rover(self, jpegbytes, timestamp_10msec):
+    def get_rover_state_from_color_range(self, a, b):
+        return self.reader_thread.run(debug_level=1, lower_color=a, upper_color=b)
+
+    def process_video_from_rover(self, jpegbytes, timestamp_10msec, lower_color=None, upper_color=None):
         array_of_bytes = np.fromstring(jpegbytes, np.uint8)
         self.image = cv2.imdecode(array_of_bytes, flags=3)
-        return self.TO()
+        if lower_color is None:
+            return self.TO()
+        else:
+            return self.PICKER(lower_color, upper_color)
 
     def process_video_from_webcam(self, webcam_port):
         cap = cv2.VideoCapture(webcam_port)
@@ -246,7 +192,7 @@ class MediaThreadEx(_MediaThread):
     def __init__(self, rover):
         _MediaThread.__init__(self, rover)
 
-    def run(self):
+    def run(self, debug_level=0, lower_color=None, upper_color=None):
         # Accumulates media bytes
         media_bytes = ''
 
@@ -274,7 +220,11 @@ class MediaThreadEx(_MediaThread):
 
                     # Video bytes: call processing routine
                     if ord(media_bytes[4]) == 1:
-                        return self.rover.process_video_from_rover(media_bytes[36:], timestamp)
+                        if debug_level == 0:
+                            return self.rover.process_video_from_rover(media_bytes[36:], timestamp)
+                        else:
+                            return self.rover.process_video_from_rover(media_bytes[36:], timestamp, lower_color,
+                                                                       upper_color)
 
                     # Audio bytes: call processing routine: dont need this yet
                     """

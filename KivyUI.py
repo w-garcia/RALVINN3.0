@@ -1,15 +1,23 @@
-import pygame
-import theano
-import numpy as np
-import cv2
-
-from pygame.locals import *
+from kivy.properties import NumericProperty, ReferenceListProperty, ObjectProperty
+from kivy.vector import Vector
+from kivy.app import App
+from kivy.uix.widget import Widget
+from kivy.clock import Clock
+from kivy.uix.slider import Slider
+from kivy.core.window import Window
 from qlearning import DeepQLearner
 from qlearning.visualize import plot_weights
 from World import World
 from time import sleep
 from time import clock
 from threading import Thread
+from multiprocessing import Process
+from random import randint
+
+import theano
+import numpy as np
+import cv2
+import warnings
 
 # universal learning parameters
 input_width = 3
@@ -24,53 +32,57 @@ max_iter = replay_size
 epsilon = 0.2
 
 
-class HumanInterface():
-    def __init__(self):
-        pygame.init()
+class KivyApp(App):
+    title = 'RALVINN3.0 Q-Learning Rover'
+
+    def build(self):
+        widget = WorldManip()
+        return widget
+
+
+class WorldManip(Widget):
+    lower_color = ObjectProperty(None)
+    upper_color = ObjectProperty(None)
+    btn_qlearning = ObjectProperty(None)
+    btn_manual = ObjectProperty(None)
+    btn_debug = ObjectProperty(None)
+
+    def __init__(self, **kwargs):
+        super(WorldManip, self).__init__(**kwargs)
+        self.kc = None
+        self.mode = None
         self.quit = False
         self.world = None
-        self.conditional_run()
-        self.active = False
+        self.btn_qlearning.on_press = self.q_callback
+        self.btn_manual.on_press = self.m_callback
+        self.btn_debug.on_press = self.d_callback
 
-    def conditional_run(self):
-        print("Make a selection:")
-        print("R - Start Rover in Q-Learning mode")
-        print("W - Start in Webcam Mode")
-        print("M - Start Rover in manual operation mode")
-        choice = raw_input().upper()
+    def q_callback(self):
+        self.mode = "Q"
+        self.world = World("R")
+        self.kc = KeyboardControl(self.world)
+        self.disable_buttons()
 
-        self.active = True
+    def m_callback(self):
+        self.mode = "M"
+        Clock.schedule_interval(self.update, 1.0/20.0)
+        self.world = World("R")
+        self.kc = KeyboardControl(self.world)
+        self.disable_buttons()
 
-        if choice == "R":
-            self.pygame_window_show("Q-Learning Rover Mode")
-            self.world = World("R")
-            #t = Thread(target=self.start_camera_feed, args=())
-            #t.start()
-            self.run_episodes()
-            self.active = False
-            #t.join()
+    def d_callback(self):
+        self.mode = "D"
+        Clock.schedule_interval(self.update, 1.0/20.0)
+        self.world = World("R")
+        self.kc = KeyboardControl(self.world)
+        self.disable_buttons()
+        self.lower_color.disabled = False
+        self.upper_color.disabled = False
 
-        elif choice == "W":
-            self.world = World("W")
-            self.run_episodes()
-
-        elif choice == "M":
-            self.pygame_window_show("Manual Operation Mode")
-            self.world = World("R")
-            #t = Thread(target=self.start_camera_feed, args=())
-            #t.start()
-            self.run_manually()
-            self.active = False
-            #t.join()
-
-        else:
-            print("Qutting.\n")
-            self.quit = True
-
-        self.active = False
-        self.world.rover.close()
-        pygame.display.quit()
-        pygame.quit()
+    def disable_buttons(self):
+        self.btn_qlearning.disabled = True
+        self.btn_manual.disabled = True
+        self.btn_debug.disabled = True
 
     def run_episodes(self):
         # initialize replay memory D <s, a, r, s', t> to replay size with random policy
@@ -212,20 +224,103 @@ class HumanInterface():
         else:
             print("Preview image returned empty")
 
-    @staticmethod
-    def pygame_window_show(window_title="Pygame"):
-        window_width = 400
-        window_height = 400
-        pygame.display.set_caption(window_title)
-        windowSurface = pygame.display.set_mode((window_width, window_height))
-        pygame.display.flip()
+    def update(self, dt):
+        if self.world is not None:
+            if self.world.rover is not None:
+                if self.mode == "M":
+                    _, preview = self.world.get_current_state(True)
+                else:
+                    lower_cv_color = self.calculate_debug_colors(self.lower_color)
+                    upper_cv_color = self.calculate_debug_colors(self.upper_color)
+                    print(lower_cv_color, upper_cv_color)
+                    _, preview = self.world.get_current_state_from_color_range(lower_cv_color, upper_cv_color)
 
-    def run_manually(self):
-        count = 0
-        while(self.world.pygame_update_controls()):
-            _, preview = self.world.get_current_state(True)
-            self.show_cv_frame(preview, 'Live Rover Feed')
-            count += 1
-            if count % 100000 == 0:
-                print(self.world.rover.get_battery_percentage())
-                count = 0
+                self.show_cv_frame(preview, 'Live Rover Feed')
+
+    @staticmethod
+    def calculate_debug_colors(controller):
+        h = controller.hue.value / 2
+        s = controller.sat.value * 2.5
+        v = controller.value.value * 2.5
+        hsv = np.array([h, s, v])
+
+        return hsv
+
+
+class ColorController(Widget):
+    hue = ObjectProperty(None)
+    sat = ObjectProperty(None)
+    value = ObjectProperty(None)
+
+
+class KeyboardControl(Widget):
+    def __init__(self, world, **kwargs):
+        self.world = world
+        super(KeyboardControl, self).__init__(**kwargs)
+        self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+        self._keyboard.bind(on_key_down=self._on_keyboard_down)
+        self._keyboard.bind(on_key_up=self._on_keyboard_up)
+
+    def _keyboard_closed(self):
+        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+        self._keyboard.unbind(on_key_up=self._on_keyboard_up)
+        self._keyboard = None
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        if keycode[1] == 'w':
+            print("Forward")
+            self.world.rover.set_wheel_treads(1, 1)
+        elif keycode[1] == 's':
+            print("Backwards")
+            self.world.rover.set_wheel_treads(-1, -1)
+        elif keycode[1] == 'a':
+            print("Left")
+            self.world.rover.set_wheel_treads(-1, 1)
+        elif keycode[1] == 'd':
+            print("Right")
+            self.world.rover.set_wheel_treads(1, -1)
+        elif keycode[1] == 'q':
+            print("Left")
+            self.world.rover.set_wheel_treads(.1, 1)
+        elif keycode[1] == 'e':
+            print("Right")
+            self.world.rover.set_wheel_treads(1, .1)
+        elif keycode[1] == 'z':
+            print("Reverse Left")
+            self.world.rover.set_wheel_treads(-.1, -1)
+        elif keycode[1] == 'c':
+            print("Reverse Right")
+            self.world.rover.set_wheel_treads(-1, -.1)
+        elif keycode[1] == 'j':
+            print("Camera Up")
+            self.world.rover.move_camera_in_vertical_direction(1)
+        elif keycode[1] == 'k':
+            print("Camera Down")
+            self.world.rover.move_camera_in_vertical_direction(-1)
+        elif keycode[1] == 'u':
+            print("Lights On")
+            self.world.rover.turn_the_lights_on()
+        elif keycode[1] == 'i':
+            print("Lights Off")
+            self.world.rover.turn_the_lights_off()
+        elif keycode[1] == 'g':
+            print("Stelth On")
+            self.world.rover.turn_stealth_on()
+        elif keycode[1] == 'h':
+            print("Stealth Off")
+            self.world.rover.turn_stealth_off()
+        elif keycode[1] == 'escape':
+            keyboard.release()
+            self.world.rover.close()
+            Window.close()
+
+        return True
+
+    def _on_keyboard_up(self, *args):
+        self.world.rover.move_camera_in_vertical_direction(0)
+        self.world.rover.set_wheel_treads(0, 0)
+        return True
+
+if __name__ == '__main__':
+    kv = KivyApp()
+    kv.run()
