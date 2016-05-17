@@ -10,26 +10,50 @@ from qlearning.visualize import plot_weights
 from World import World
 from time import sleep
 from time import clock
-from threading import Thread
-from multiprocessing import Process
 from random import randint
+from multiprocessing.managers import BaseManager
 
 import theano
 import numpy as np
 import cv2
 import warnings
+import multiprocessing
+import os
+import copy
 
-# universal learning parameters
-input_width = 3
-input_height = 1
-n_actions = 2
-discount = 0.9
-learn_rate = .001
-batch_size = 1
-rng = np.random
-replay_size = 10
-max_iter = replay_size
-epsilon = 0.2
+mp_lock = multiprocessing.Lock()
+
+
+def show_cv_frame(picture, window_title):
+    if picture is not None:
+        cv2.imshow(window_title, picture)
+        cv2.waitKey(30)
+    else:
+        print("Preview image returned empty")
+
+
+class LastState(object):
+    def __init__(self):
+        self.state = None
+        self.image = None
+
+    def get_last_state(self):
+        return self.state
+
+    def get_last_image(self):
+        return self.image
+
+    def set_last_state(self, st):
+        self.state = st
+
+    def set_last_image(self, im):
+        self.image = im
+
+
+class StateManager(BaseManager):
+    pass
+
+StateManager.register('last_state', LastState)
 
 
 class KivyApp(App):
@@ -50,15 +74,24 @@ class WorldManip(Widget):
     def __init__(self, **kwargs):
         super(WorldManip, self).__init__(**kwargs)
         self.kc = None
+        self.qc = None
         self.mode = None
         self.quit = False
         self.world = None
+        self.active = False
+
+        self.q_process = None
+        self.state_mgr = StateManager()
+        self.state_mgr.start()
+        self.last_state = self.state_mgr.last_state()
+
         self.btn_qlearning.on_press = self.q_callback
         self.btn_manual.on_press = self.m_callback
         self.btn_debug.on_press = self.d_callback
 
     def q_callback(self):
         self.mode = "Q"
+        Clock.schedule_interval(self.update, 1.0/20.0)
         self.world = World("R")
         self.kc = KeyboardControl(self.world)
         self.disable_buttons()
@@ -84,10 +117,47 @@ class WorldManip(Widget):
         self.btn_manual.disabled = True
         self.btn_debug.disabled = True
 
+    def update(self, dt):
+        if self.world is not None:
+            if self.mode == "M" or self.mode == "Q":
+                _temp_state = np.zeros((1, 1, 4, 3), dtype='int32')
+
+                mp_lock.acquire()
+                _temp_state[0][0], _temp_img = self.world.get_current_state(True)
+                self.last_state.set_last_state(_temp_state)
+                self.last_state.set_last_image(_temp_img)
+                mp_lock.release()
+
+                if not self.active and self.mode == "Q":
+                    self.active = True
+                    self.q_process = multiprocessing.Process(target=self.run_episodes)
+                    self.q_process.start()
+            else:
+                lower_cv_color = self.calculate_debug_colors(self.lower_color)
+                upper_cv_color = self.calculate_debug_colors(self.upper_color)
+                print(lower_cv_color, upper_cv_color)
+                _, _temp_img = self.world.get_current_state_from_color_range(lower_cv_color, upper_cv_color)
+
+            show_cv_frame(_temp_img, 'Live Rover Feed')
+
     def run_episodes(self):
+        #print('module name:', __name__)
+        #print('process id:', os.getpid())
+
+        # universal learning parameters
+        input_width = 3
+        input_height = 4
+        n_actions = 2
+        discount = 0.9
+        learn_rate = .001
+        batch_size = 1
+        rng = np.random
+        replay_size = 10
+        max_iter = replay_size
+        epsilon = 0.2
+
         # initialize replay memory D <s, a, r, s', t> to replay size with random policy
-        print("Starting in Q-Learning mode. Hold Escape on pygame window at anytime to quit.")
-        print('Initializing replay memory ... '),
+        print('Initializing replay memory ... ')
         replay_memory = (
             np.zeros((replay_size, 1, input_height, input_width), dtype='int32'),
             np.zeros((replay_size, 1), dtype='int32'),
@@ -96,29 +166,57 @@ class WorldManip(Widget):
             np.zeros((replay_size, 1), dtype='int32')
         )
 
-        s1 = np.zeros((1, 1, input_height, input_width), dtype='int32')
+        s1 = self.last_state.get_last_state()
 
-        s1[0][0][0] = self.world.get_current_state()
         terminal = 0
-        state = s1
-        for step in range(replay_size):
-            if (not self.world.pygame_update_controls(False)):
-                print("Quitting")
-                return
-            print(step)
-            action = np.random.randint(2)
-            #start = clock()
 
-            state_prime, reward, terminal, state_picture = self.world.act(state, action)
-            self.show_cv_frame(state_picture, 'Action State')
-            if state_picture is None:
-                pass
+        #TODO: STEP 1
+        for step in range(replay_size):
+            print(step)
+            #sleep(2)
+
+            mp_lock.acquire()
+            state = self.last_state.get_last_state()
+            mp_lock.release()
+
+            action = np.random.randint(2)
+
+            self.world.act(action)
+            sleep(0.2)
+            mp_lock.acquire()
+            state_prime = self.last_state.get_last_state()
+
+            show_cv_frame(self.last_state.get_last_image(), "state_prime")
+            mp_lock.release()
+
+            # get the reward and terminal value of new state
+            if state_prime[0][0][0][1] == 1:
+                reward = 5
+                terminal = 1
+
+                print("Terminal reached, reset rover to opposite red flag.")
+                #t = Thread(target=self.rover.turn_left, args=(1.2,0.5))
+                #t.start()
+                #t.join()
+                sleep(5)
+
+            elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
+                reward = 0.5
+                terminal = 0
+            else:
+                reward = 0
+                terminal = 0
+
             #end = clock()
             #print("Time taken to act: {}").format(end - start)
             #start = clock()
 
             print "Found state: "
-            print state_prime
+            print("{} {}").format("Pink:", state_prime[0][0][0])
+            print("{} {}").format("Orange:", state_prime[0][0][1])
+            print("{} {}").format("Blue:", state_prime[0][0][2])
+            print("{} {}").format("Green:", state_prime[0][0][3])
+
             print ('Lead to reward of: {}').format(reward)
             sequence = [state, action, reward, state_prime, terminal]
 
@@ -126,12 +224,13 @@ class WorldManip(Widget):
 
                 replay_memory[entry][step] = sequence[entry]
 
-            state = state_prime
             #end = clock()
             #print("Time taken to save memory: {}").format(end - start)
             if terminal == 1:
                 print("Terminal reached, reset rover to opposite red flag. Starting again in 5 seconds...")
                 sleep(5)
+
+
         print('done')
 
         # build the reinforcement-learning agent
@@ -139,22 +238,44 @@ class WorldManip(Widget):
         agent = DeepQLearner(input_width, input_height, n_actions, discount, learn_rate, batch_size, rng)
 
         print('Training RL agent ... ')
-        s2 = np.zeros((1, 1, input_height, input_width), dtype='int32')
-        s2[0][0][0] = self.world.get_current_state()
 
-        state = s2  # initialize first state... would be better to invoke current state from rover directly
         running_loss = []
+
+        #TODO: STEP 2
         for i in range(max_iter):
-            if (not self.world.pygame_update_controls(False)):
-                print("Quitting")
-                return
+            #sleep(2)
+
+            mp_lock.acquire()
+            state = self.last_state.get_last_state()
+            mp_lock.release()
+
             action = agent.choose_action(state, epsilon)  # choose an action using epsilon-greedy policy
 
             # get the new state, reward and terminal value from world
-            state_prime, reward, terminal, preview = self.world.act(state, action)
-            self.show_cv_frame(preview, 'Action State')
-            if preview is None:
-                pass
+
+            self.world.act(action)
+            sleep(0.2)
+
+            mp_lock.acquire()
+            state_prime = self.last_state.get_last_state()
+            show_cv_frame(self.last_state.get_last_image(), "state_prime")
+            mp_lock.release()
+
+            print "Found state: "
+            print("{} {}").format("Pink:", state_prime[0][0][0])
+            print("{} {}").format("Orange:", state_prime[0][0][1])
+            print("{} {}").format("Blue:", state_prime[0][0][2])
+            print("{} {}").format("Green:", state_prime[0][0][3])
+
+            if state_prime[0][0][0][1] == 1:
+                reward = 5
+                terminal = 1
+            elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
+                reward = 0.5
+                terminal = 0
+            else:
+                reward = 0
+                terminal = 0
 
             sequence = [state, action, reward, state_prime, terminal]  # concatenate into a sequence
             print "Found state: "
@@ -167,7 +288,10 @@ class WorldManip(Widget):
 
             batch_index = np.random.permutation(batch_size)  # get random mini-batch indices
 
-            loss = agent.train(replay_memory[0][batch_index], replay_memory[1][batch_index], replay_memory[2][batch_index], replay_memory[3][batch_index], replay_memory[4][batch_index])
+            loss = agent.train(replay_memory[0][batch_index], replay_memory[1][batch_index],
+                               replay_memory[2][batch_index], replay_memory[3][batch_index],
+                               replay_memory[4][batch_index])
+
             running_loss.append(loss)
 
             #if i % 100 == 0:
@@ -185,22 +309,38 @@ class WorldManip(Widget):
         print("Starting in 5 seconds...")
         sleep(5)
 
+        #TODO: STEP 3
+
         shortest_path = 5
         state = s1
         terminal = 0
         j = 0
         paths = np.zeros((100, 1, 1, input_height, input_width), dtype='int32')
-        while terminal == 0 and self.world.pygame_update_controls(False):
+        while terminal == 0:
             action = agent.choose_action(state, 0)
-            state_prime, reward, terminal, preview = self.world.act(state, action)
-            self.show_cv_frame(preview, 'Action State')
-            if preview is None:
-                pass
+
+            self.world.act(action)
+
+            mp_lock.acquire()
+            state_prime = self.last_state.get_last_state()
+            mp_lock.release()
+
+            if state_prime[0][0][0][1] == 1:
+                reward = 5
+                terminal = 1
+            elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
+                reward = 0.5
+                terminal = 0
+            else:
+                reward = 0
+                terminal = 0
+
             state = state_prime
+
             paths[j] = state
             j += 1
 
-            if j == 50 and reward == 0:
+            if j == max_iter and reward == 0:
                 print('not successful, no reward found after 50 moves')
                 terminal = 1
 
@@ -217,31 +357,10 @@ class WorldManip(Widget):
         plot_weights(weights)
 
     @staticmethod
-    def show_cv_frame(picture, window_title):
-        if picture is not None:
-            cv2.imshow(window_title, picture)
-            cv2.waitKey(5)
-        else:
-            print("Preview image returned empty")
-
-    def update(self, dt):
-        if self.world is not None:
-            if self.world.rover is not None:
-                if self.mode == "M":
-                    _, preview = self.world.get_current_state(True)
-                else:
-                    lower_cv_color = self.calculate_debug_colors(self.lower_color)
-                    upper_cv_color = self.calculate_debug_colors(self.upper_color)
-                    print(lower_cv_color, upper_cv_color)
-                    _, preview = self.world.get_current_state_from_color_range(lower_cv_color, upper_cv_color)
-
-                self.show_cv_frame(preview, 'Live Rover Feed')
-
-    @staticmethod
     def calculate_debug_colors(controller):
-        h = controller.hue.value / 2
-        s = controller.sat.value * 2.5
-        v = controller.value.value * 2.5
+        h = int(controller.hue.value / 1.42)
+        s = int(controller.sat.value * 2.55)
+        v = int(controller.value.value * 2.55)
         hsv = np.array([h, s, v])
 
         return hsv
@@ -269,16 +388,16 @@ class KeyboardControl(Widget):
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         if keycode[1] == 'w':
             print("Forward")
-            self.world.rover.set_wheel_treads(1, 1)
+            self.world.rover.set_wheel_treads(.5, .5)
         elif keycode[1] == 's':
             print("Backwards")
-            self.world.rover.set_wheel_treads(-1, -1)
+            self.world.rover.set_wheel_treads(-.5, -.5)
         elif keycode[1] == 'a':
             print("Left")
-            self.world.rover.set_wheel_treads(-1, 1)
+            self.world.rover.set_wheel_treads(-.5, .5)
         elif keycode[1] == 'd':
             print("Right")
-            self.world.rover.set_wheel_treads(1, -1)
+            self.world.rover.set_wheel_treads(.5, -.5)
         elif keycode[1] == 'q':
             print("Left")
             self.world.rover.set_wheel_treads(.1, 1)
@@ -320,6 +439,7 @@ class KeyboardControl(Widget):
         self.world.rover.move_camera_in_vertical_direction(0)
         self.world.rover.set_wheel_treads(0, 0)
         return True
+
 
 if __name__ == '__main__':
     kv = KivyApp()

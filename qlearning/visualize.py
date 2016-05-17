@@ -9,6 +9,6 @@ def plot_weights(weights):
     pl.figure()
     for node in range(nodes):
         pl.subplot(1, nodes, node + 1)
-        pl.imshow(weights[:, node].reshape((1, 3)), interpolation='nearest')
+        pl.imshow(weights[:, node].reshape((4, 3)), interpolation='nearest')
         pl.title("Weights for action " + actions[node])
     pl.show()

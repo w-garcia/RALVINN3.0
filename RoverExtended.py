@@ -25,20 +25,20 @@ class RoverExtended(Rover):
             self.is_active = True
             self.reader_thread = MediaThreadEx(self)
 
-    def turn_left(self, duration_in_seconds):
+    def turn_left(self, duration_in_seconds, speed):
         start = clock()
         end = clock()
         while end - start < duration_in_seconds:
-            self.set_wheel_treads(-1, 1)
+            self.set_wheel_treads(-speed, speed)
             end = clock()
 
         self.set_wheel_treads(0, 0)
 
-    def turn_right(self, duration_in_seconds):
+    def turn_right(self, duration_in_seconds, speed):
         start = clock()
         end = clock()
         while end - start < duration_in_seconds:
-            self.set_wheel_treads(1, -1)
+            self.set_wheel_treads(speed, -speed)
             end = clock()
 
         self.set_wheel_treads(0, 0)
@@ -46,36 +46,70 @@ class RoverExtended(Rover):
     def TO(self):
         frame = self.image
 
-        pink_upper = np.array([227, 255, 255])
-        pink_lower = np.array([147, 95, 150])
-        pink, frame = self.get_color_state(frame, pink_lower, pink_upper)
+        pink_upper = np.array([189, 255, 255])
+        pink_lower = np.array([130, 102, 0])
+        pink, frame, pink_contours = self.get_color_state(frame, pink_lower, pink_upper)
 
-        orange_upper = np.array([15, 255, 255])
-        orange_lower = np.array([5, 50, 50])
-        orange, frame = self.get_color_state(frame, orange_lower, orange_upper)
-        """
-        purple_upper = np.array([15, 255, 255])
-        purple_lower = np.array([5, 50, 50])
-        purple, frame = self.get_color_state(frame, purple_lower, purple_upper)
+        orange_upper = np.array([30, 255, 255])
+        orange_lower = np.array([0, 109, 112])
+        orange, frame, orange_contours = self.get_color_state(frame, orange_lower, orange_upper)
 
-        green_upper = np.array([15, 255, 255])
-        green_lower = np.array([5, 50, 50])
-        green, frame = self.get_color_state(frame, green_lower, green_upper)
-        """
-        #state = [pink, orange, purple, green]
+        blue_upper = np.array([145, 255, 255])
+        blue_lower = np.array([89, 132, 102])
+        blue, frame, blue_contours = self.get_color_state(frame, blue_lower, blue_upper)
 
-        return pink, frame
+        green_upper = np.array([78, 135, 255])
+        green_lower = np.array([47, 5, 216])
+        green, frame, green_contours = self.get_color_state(frame, green_lower, green_upper)
+
+        _, img_width, _ = frame.shape
+
+        draw_lines = False
+        #draw contours
+        if pink_contours is not None:
+            cv2.drawContours(frame, pink_contours, -1, ((253, 73, 208)), 3)
+            draw_lines = True
+        if orange_contours is not None:
+            cv2.drawContours(frame, orange_contours, -1, ((255, 187, 104)), 3)
+            draw_lines = True
+        if blue_contours is not None:
+            cv2.drawContours(frame, blue_contours, -1, ((0, 0, 255)), 3)
+            draw_lines = True
+        if green_contours is not None:
+            cv2.drawContours(frame, green_contours, -1, ((0, 255, 0)), 3)
+            draw_lines = True
+
+        if draw_lines:
+            #Break the screen into thirds
+            cv2.line(frame, (img_width/3,0), (img_width/3,511), (255,0,0) ,5)
+            cv2.line(frame, (2*img_width/3,0), (2*img_width/3,511), (255,0,0) ,5)
+
+        state = [pink, orange, blue, green]
+
+        return state, frame
 
     def PICKER(self, lower_color, upper_color):
         frame = self.image
-        state, frame = self.get_color_state(frame, lower_color, upper_color)
+        state, frame, _contours = self.get_color_state(frame, lower_color, upper_color)
+
+        _, img_width, _ = frame.shape
+
+        #Draw contours
+        if _contours is not None:
+            cv2.drawContours(frame, _contours, -1, ((0, 255, 0)), 3)
+
+            #Break the screen into thirds
+            cv2.line(frame, (img_width/3,0), (img_width/3,511), (255,0,0),5)
+            cv2.line(frame, (2*img_width/3,0), (2*img_width/3,511), (255,0,0),5)
+
         return state, frame
 
     @staticmethod
     def get_color_state(frame, lower_color, upper_color):
 
         if frame is None:
-            return np.array([0, 0, 0]), frame
+            return np.array([0, 0, 0]), frame, None
+
 
         imgHeight,imgWidth, imgChannels = frame.shape
         # Convert BGR to HSV
@@ -107,7 +141,7 @@ class RoverExtended(Rover):
         if len(Pcontours) == 0:
             #end = clock()
             #print(end - start)
-            return np.array([0, 0, 0]), frame
+            return np.array([0, 0, 0]), frame, None
 
         #Find the moments of the first contour
         cnt = []
@@ -124,7 +158,7 @@ class RoverExtended(Rover):
                 biggestCnt = i
 
         if biggestCnt is None:
-            return np.array([0, 0, 0]), frame
+            return np.array([0, 0, 0]), frame, None
 
         # Use the moments to find the center x and center y
         cx = int(M[biggestCnt]['m10']/M[biggestCnt]['m00'])
@@ -137,9 +171,11 @@ class RoverExtended(Rover):
 
         # put text onto the final image at the center of the contour
         font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(frame ,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
+        #cv2.putText(frame ,location,(cx,cy), font, .5,(255,255,255),2,cv2.LINE_AA)
 
         state = np.array([0, 0, 0])
+
+        """TODO: Implement into parent fcn
 
         #Change contour outline to Red if the center is outside the middle third
         # Or green if it is inside the middle third
@@ -152,18 +188,14 @@ class RoverExtended(Rover):
         if cx > 2 * imgWidth / 3:
             contourColor = ((0,0,255))
             state[2] = 1
+        """
 
-            #Draw contours onto the final image
-        cv2.drawContours(frame, Pcontours[i], -1, contourColor, 3)
+        #Draw contours onto the final image
+        #cv2.drawContours(frame, Pcontours[i], -1, contourColor, 3)
 
-            #Draw center point
-        cv2.circle(frame,(cx,cy), 5, (255,0,0), -1)
-
-        #Break the screen into thirds
-        cv2.line(frame,(imgWidth/3,0),(imgWidth/3,511),(255,0,0),5)
-        cv2.line(frame,(2*imgWidth/3,0),(2*imgWidth/3,511),(255,0,0),5)
-
-        return state, frame
+        #Draw center point
+        #cv2.circle(frame,(cx,cy), 5, (255,0,0), -1)
+        return state, frame, Pcontours[i]
 
     def get_rover_state(self):
         return self.reader_thread.run()
@@ -174,6 +206,11 @@ class RoverExtended(Rover):
     def process_video_from_rover(self, jpegbytes, timestamp_10msec, lower_color=None, upper_color=None):
         array_of_bytes = np.fromstring(jpegbytes, np.uint8)
         self.image = cv2.imdecode(array_of_bytes, flags=3)
+
+        if self.image is None:
+            print("[RoverExtended] self.image is empty.")
+            return np.zeros((4, 3)), None
+
         if lower_color is None:
             return self.TO()
         else:
@@ -184,7 +221,7 @@ class RoverExtended(Rover):
         _, self.image = cap.read()
         if self.image is None:
             print("Unable to read image from webcam, try selecting a different port.")
-            return np.array([0, 0, 0]), None
+            return np.zeros((4, 3)), None
         return self.TO()
 
 
@@ -221,10 +258,12 @@ class MediaThreadEx(_MediaThread):
                     # Video bytes: call processing routine
                     if ord(media_bytes[4]) == 1:
                         if debug_level == 0:
-                            return self.rover.process_video_from_rover(media_bytes[36:], timestamp)
+                            s = self.rover.process_video_from_rover(media_bytes[36:], timestamp)
+                            return s
                         else:
-                            return self.rover.process_video_from_rover(media_bytes[36:], timestamp, lower_color,
-                                                                       upper_color)
+                            s = self.rover.process_video_from_rover(media_bytes[36:], timestamp, lower_color,
+                                                                    upper_color)
+                            return s
 
                     # Audio bytes: call processing routine: dont need this yet
                     """
