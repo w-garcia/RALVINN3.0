@@ -152,7 +152,7 @@ class WorldManip(Widget):
         learn_rate = .001
         batch_size = 1
         rng = np.random
-        replay_size = 10
+        replay_size = 20
         max_iter = replay_size
         epsilon = 0.2
 

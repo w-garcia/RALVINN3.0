@@ -58,8 +58,8 @@ class RoverExtended(Rover):
         blue_lower = np.array([89, 132, 102])
         blue, frame, blue_contours = self.get_color_state(frame, blue_lower, blue_upper)
 
-        green_upper = np.array([78, 135, 255])
-        green_lower = np.array([47, 5, 216])
+        green_upper = np.array([62, 178, 221])
+        green_lower = np.array([33, 53, 94])
         green, frame, green_contours = self.get_color_state(frame, green_lower, green_upper)
 
         _, img_width, _ = frame.shape
@@ -175,26 +175,18 @@ class RoverExtended(Rover):
 
         state = np.array([0, 0, 0])
 
-        """TODO: Implement into parent fcn
-
         #Change contour outline to Red if the center is outside the middle third
         # Or green if it is inside the middle third
         if cx <= imgWidth / 3:
-            contourColor = ((0,0,255))
             state[0] = 1
         if cx > imgWidth / 3 and cx <= 2 * imgWidth / 3:
-            contourColor = ((0,255,0))
             state[1] = 1
         if cx > 2 * imgWidth / 3:
-            contourColor = ((0,0,255))
             state[2] = 1
-        """
-
-        #Draw contours onto the final image
-        #cv2.drawContours(frame, Pcontours[i], -1, contourColor, 3)
 
         #Draw center point
         #cv2.circle(frame,(cx,cy), 5, (255,0,0), -1)
+
         return state, frame, Pcontours[i]
 
     def get_rover_state(self):
