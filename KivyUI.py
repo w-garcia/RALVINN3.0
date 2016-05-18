@@ -149,13 +149,16 @@ class WorldManip(Widget):
         input_height = 4
         n_actions = 2
         discount = 0.9
-        learn_rate = .001
-        batch_size = 1
+        learn_rate = .005
+        batch_size = 4
         rng = np.random
-        replay_size = 20
-        max_iter = replay_size
+        replay_size = 16
+        max_iter = 200
         epsilon = 0.2
 
+        print('Starting in 5 seconds... prepare rover opposite to pink flag.')
+        sleep(5)
+        
         # initialize replay memory D <s, a, r, s', t> to replay size with random policy
         print('Initializing replay memory ... ')
         replay_memory = (
@@ -191,7 +194,7 @@ class WorldManip(Widget):
 
             # get the reward and terminal value of new state
             if state_prime[0][0][0][1] == 1:
-                reward = 5
+                reward = 10
                 terminal = 1
 
                 print("Terminal reached, reset rover to opposite red flag.")
@@ -201,7 +204,13 @@ class WorldManip(Widget):
                 sleep(5)
 
             elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
-                reward = 0.5
+                reward = 2
+                terminal = 0
+            elif state_prime[0][0][3][1] == 1:
+                reward = -10
+                terminal = 0
+            elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
+                reward = -2
                 terminal = 0
             else:
                 reward = 0
@@ -237,7 +246,9 @@ class WorldManip(Widget):
         print('Building RL agent ... ')
         agent = DeepQLearner(input_width, input_height, n_actions, discount, learn_rate, batch_size, rng)
 
-        print('Training RL agent ... ')
+        print('Training RL agent ... Reset rover to opposite pink flag.')
+        print('Starting in 5 seconds...')
+        sleep(5)
 
         running_loss = []
 
@@ -268,10 +279,16 @@ class WorldManip(Widget):
             print("{} {}").format("Green:", state_prime[0][0][3])
 
             if state_prime[0][0][0][1] == 1:
-                reward = 5
+                reward = 10
                 terminal = 1
             elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
-                reward = 0.5
+                reward = 2
+                terminal = 0
+            elif state_prime[0][0][3][1] == 1:
+                reward = -10
+                terminal = 0
+            elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
+                reward = -2
                 terminal = 0
             else:
                 reward = 0
@@ -320,16 +337,23 @@ class WorldManip(Widget):
             action = agent.choose_action(state, 0)
 
             self.world.act(action)
+            sleep(0.2)
 
             mp_lock.acquire()
             state_prime = self.last_state.get_last_state()
             mp_lock.release()
 
             if state_prime[0][0][0][1] == 1:
-                reward = 5
+                reward = 10
                 terminal = 1
             elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
-                reward = 0.5
+                reward = 2
+                terminal = 0
+            elif state_prime[0][0][3][1] == 1:
+                reward = -10
+                terminal = 0
+            elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
+                reward = -2
                 terminal = 0
             else:
                 reward = 0
@@ -340,7 +364,7 @@ class WorldManip(Widget):
             paths[j] = state
             j += 1
 
-            if j == max_iter and reward == 0:
+            if j == 12 and reward == 0:
                 print('not successful, no reward found after 50 moves')
                 terminal = 1
 

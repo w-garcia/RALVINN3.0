@@ -51,15 +51,15 @@ class RoverExtended(Rover):
         pink, frame, pink_contours = self.get_color_state(frame, pink_lower, pink_upper)
 
         orange_upper = np.array([30, 255, 255])
-        orange_lower = np.array([0, 109, 112])
+        orange_lower = np.array([0, 122, 112])
         orange, frame, orange_contours = self.get_color_state(frame, orange_lower, orange_upper)
 
-        blue_upper = np.array([145, 255, 255])
-        blue_lower = np.array([89, 132, 102])
+        blue_upper = np.array([152, 255, 255])
+        blue_lower = np.array([85, 112, 86])
         blue, frame, blue_contours = self.get_color_state(frame, blue_lower, blue_upper)
 
         green_upper = np.array([62, 178, 221])
-        green_lower = np.array([33, 53, 94])
+        green_lower = np.array([33, 40, 94])
         green, frame, green_contours = self.get_color_state(frame, green_lower, green_upper)
 
         _, img_width, _ = frame.shape
