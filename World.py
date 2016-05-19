@@ -58,7 +58,7 @@ class World(object):
             # turn rover left x seconds
             print("Left")
             if self.rover.mode == "R":
-                t = Thread(target=self.rover.turn_left, args=(0.6, 0.5))
+                t = Thread(target=self.rover.turn_left, args=(0.5, 0.5))
                 t.start()
                 t.join()
 
@@ -66,7 +66,7 @@ class World(object):
             print("Right")
             # turn rover right x seconds
             if self.rover.mode == "R":
-                t = Thread(target=self.rover.turn_right, args=(0.6, 0.5))
+                t = Thread(target=self.rover.turn_right, args=(0.5, 0.5))
                 t.start()
                 t.join()
 

@@ -12,6 +12,7 @@ from time import sleep
 from time import clock
 from random import randint
 from multiprocessing.managers import BaseManager
+from threading import Thread
 
 import theano
 import numpy as np
@@ -155,6 +156,11 @@ class WorldManip(Widget):
         replay_size = 16
         max_iter = 200
         epsilon = 0.2
+        #TODO: Make this settable from GUI
+        beginning_state = np.array([[[[0, 0, 0],    #pink
+                                      [0, 0, 0],    #orange
+                                      [0, 1, 0],    #blue
+                                      [0, 0, 0]]]]) #green
 
         print('Starting in 5 seconds... prepare rover opposite to pink flag.')
         sleep(5)
@@ -169,14 +175,12 @@ class WorldManip(Widget):
             np.zeros((replay_size, 1), dtype='int32')
         )
 
-        s1 = self.last_state.get_last_state()
-
+        s1_middle_thirds = beginning_state[0][0][[0, 1, 2, 3], [1, 1, 1, 1]]
         terminal = 0
 
         #TODO: STEP 1
         for step in range(replay_size):
             print(step)
-            #sleep(2)
 
             mp_lock.acquire()
             state = self.last_state.get_last_state()
@@ -186,45 +190,16 @@ class WorldManip(Widget):
 
             self.world.act(action)
             sleep(0.2)
+
             mp_lock.acquire()
             state_prime = self.last_state.get_last_state()
-
             show_cv_frame(self.last_state.get_last_image(), "state_prime")
             mp_lock.release()
 
             # get the reward and terminal value of new state
-            if state_prime[0][0][0][1] == 1:
-                reward = 10
-                terminal = 1
+            reward, terminal = self.calculate_reward_and_terminal(state_prime)
 
-                print("Terminal reached, reset rover to opposite red flag.")
-                #t = Thread(target=self.rover.turn_left, args=(1.2,0.5))
-                #t.start()
-                #t.join()
-                sleep(5)
-
-            elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
-                reward = 2
-                terminal = 0
-            elif state_prime[0][0][3][1] == 1:
-                reward = -10
-                terminal = 0
-            elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
-                reward = -2
-                terminal = 0
-            else:
-                reward = 0
-                terminal = 0
-
-            #end = clock()
-            #print("Time taken to act: {}").format(end - start)
-            #start = clock()
-
-            print "Found state: "
-            print("{} {}").format("Pink:", state_prime[0][0][0])
-            print("{} {}").format("Orange:", state_prime[0][0][1])
-            print("{} {}").format("Blue:", state_prime[0][0][2])
-            print("{} {}").format("Green:", state_prime[0][0][3])
+            self.print_color_states(state_prime)
 
             print ('Lead to reward of: {}').format(reward)
             sequence = [state, action, reward, state_prime, terminal]
@@ -233,12 +208,10 @@ class WorldManip(Widget):
 
                 replay_memory[entry][step] = sequence[entry]
 
-            #end = clock()
-            #print("Time taken to save memory: {}").format(end - start)
             if terminal == 1:
                 print("Terminal reached, reset rover to opposite red flag. Starting again in 5 seconds...")
-                sleep(5)
-
+                print("Resetting back to s1:")
+                self.reset_rover_to_start(s1_middle_thirds)
 
         print('done')
 
@@ -247,6 +220,7 @@ class WorldManip(Widget):
         agent = DeepQLearner(input_width, input_height, n_actions, discount, learn_rate, batch_size, rng)
 
         print('Training RL agent ... Reset rover to opposite pink flag.')
+        self.reset_rover_to_start(s1_middle_thirds)
         print('Starting in 5 seconds...')
         sleep(5)
 
@@ -254,8 +228,6 @@ class WorldManip(Widget):
 
         #TODO: STEP 2
         for i in range(max_iter):
-            #sleep(2)
-
             mp_lock.acquire()
             state = self.last_state.get_last_state()
             mp_lock.release()
@@ -272,27 +244,9 @@ class WorldManip(Widget):
             show_cv_frame(self.last_state.get_last_image(), "state_prime")
             mp_lock.release()
 
-            print "Found state: "
-            print("{} {}").format("Pink:", state_prime[0][0][0])
-            print("{} {}").format("Orange:", state_prime[0][0][1])
-            print("{} {}").format("Blue:", state_prime[0][0][2])
-            print("{} {}").format("Green:", state_prime[0][0][3])
+            self.print_color_states(state_prime)
 
-            if state_prime[0][0][0][1] == 1:
-                reward = 10
-                terminal = 1
-            elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
-                reward = 2
-                terminal = 0
-            elif state_prime[0][0][3][1] == 1:
-                reward = -10
-                terminal = 0
-            elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
-                reward = -2
-                terminal = 0
-            else:
-                reward = 0
-                terminal = 0
+            reward, terminal = self.calculate_reward_and_terminal(state_prime)
 
             sequence = [state, action, reward, state_prime, terminal]  # concatenate into a sequence
             print "Found state: "
@@ -317,22 +271,29 @@ class WorldManip(Widget):
             state = state_prime
             if terminal == 1:
                 print("Terminal reached, reset rover to opposite red flag. Starting again in 5 seconds...")
-                sleep(5)
+                print("Resetting back to s1:")
+                self.reset_rover_to_start(s1_middle_thirds)
 
         print('... done training')
 
         # test to see if it has learned best route
-        print("Testing whether optimal path is learned ... set rover opposite red flag\n")
-        print("Starting in 5 seconds...")
-        sleep(5)
+        print("Testing whether optimal path is learned ... set rover to start.\n")
+        self.reset_rover_to_start(s1_middle_thirds)
 
         #TODO: STEP 3
-
+        max_test_iter = 12
         shortest_path = 5
-        state = s1
         terminal = 0
         j = 0
-        paths = np.zeros((100, 1, 1, input_height, input_width), dtype='int32')
+
+        mp_lock.acquire()
+        state = self.last_state.get_last_state()
+        mp_lock.release()
+
+        paths = np.zeros((max_test_iter + 1, 1, 1, input_height, input_width), dtype='int32')
+        paths[j] = state
+
+        #Begin test phase
         while terminal == 0:
             action = agent.choose_action(state, 0)
 
@@ -343,29 +304,14 @@ class WorldManip(Widget):
             state_prime = self.last_state.get_last_state()
             mp_lock.release()
 
-            if state_prime[0][0][0][1] == 1:
-                reward = 10
-                terminal = 1
-            elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
-                reward = 2
-                terminal = 0
-            elif state_prime[0][0][3][1] == 1:
-                reward = -10
-                terminal = 0
-            elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
-                reward = -2
-                terminal = 0
-            else:
-                reward = 0
-                terminal = 0
-
+            reward, terminal = self.calculate_reward_and_terminal(state_prime)
             state = state_prime
 
-            paths[j] = state
             j += 1
+            paths[j] = state
 
-            if j == 12 and reward == 0:
-                print('not successful, no reward found after 50 moves')
+            if j == max_test_iter and reward < 10:
+                print('not successful, no reward found after {} moves').format(max_test_iter)
                 terminal = 1
 
         if j <= shortest_path:
@@ -379,6 +325,52 @@ class WorldManip(Widget):
         # visualize the weights for each of the action nodes
         weights = agent.get_weights()
         plot_weights(weights)
+
+    @staticmethod
+    def print_color_states(state_prime):
+        print "Found state: "
+        print("{} {}").format("Pink:", state_prime[0][0][0])
+        print("{} {}").format("Orange:", state_prime[0][0][1])
+        print("{} {}").format("Blue:", state_prime[0][0][2])
+        print("{} {}").format("Green:", state_prime[0][0][3])
+
+    @staticmethod
+    def calculate_reward_and_terminal(state_prime):
+        if state_prime[0][0][0][1] == 1:
+            reward = 10
+            terminal = 1
+        elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
+            reward = 2
+            terminal = 0
+        elif state_prime[0][0][3][1] == 1:
+            reward = -10
+            terminal = 0
+        elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
+            reward = -2
+            terminal = 0
+        else:
+            reward = 0
+            terminal = 0
+
+        return reward, terminal
+
+    def reset_rover_to_start(self, s1_middle_thirds):
+        print s1_middle_thirds
+        sleep(1)
+        mp_lock.acquire()
+        # Get middle thirds of each color state
+        sc = self.last_state.get_last_state()[0][0][[0, 1, 2, 3], [1, 1, 1, 1]]
+        mp_lock.release()
+        while (not np.array_equal(sc, s1_middle_thirds)):
+            t = Thread(target=self.world.rover.turn_right, args=(0.1, 0.5))
+            t.start()
+            t.join()
+            sleep(0.1)
+
+            mp_lock.acquire()
+            sc = self.last_state.get_last_state()[0][0][[0, 1, 2, 3], [1, 1, 1, 1]]
+            print sc
+            mp_lock.release()
 
     @staticmethod
     def calculate_debug_colors(controller):

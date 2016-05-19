@@ -47,7 +47,7 @@ class RoverExtended(Rover):
         frame = self.image
 
         pink_upper = np.array([189, 255, 255])
-        pink_lower = np.array([130, 102, 0])
+        pink_lower = np.array([130, 137, 112])
         pink, frame, pink_contours = self.get_color_state(frame, pink_lower, pink_upper)
 
         orange_upper = np.array([30, 255, 255])
