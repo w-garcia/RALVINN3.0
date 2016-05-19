@@ -5,6 +5,7 @@
     lower_color: lower_controller
     upper_color: upper_controller
     btn_qlearning: btn_qlearning
+    btn_qlearning_load: btn_qlearning_load
     btn_manual: btn_manual
     btn_debug: btn_debug
 
@@ -18,12 +19,16 @@
             text: 'Choose a Mode:'
 
         GridLayout:
-            cols: 3
+            cols: 4
             size_hint_y: 0.1
 
             Button:
                 id: btn_qlearning
-                text: 'Q-Learning'
+                text: 'Q-Learning (New)'
+
+            Button:
+                id: btn_qlearning_load
+                text: 'Q-Learning (Load)'
 
             Button:
                 id: btn_manual

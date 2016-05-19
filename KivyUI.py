@@ -14,6 +14,7 @@ from random import randint
 from multiprocessing.managers import BaseManager
 from threading import Thread
 
+import cPickle
 import theano
 import numpy as np
 import cv2
@@ -69,6 +70,7 @@ class WorldManip(Widget):
     lower_color = ObjectProperty(None)
     upper_color = ObjectProperty(None)
     btn_qlearning = ObjectProperty(None)
+    btn_qlearning_load = ObjectProperty(None)
     btn_manual = ObjectProperty(None)
     btn_debug = ObjectProperty(None)
 
@@ -89,9 +91,17 @@ class WorldManip(Widget):
         self.btn_qlearning.on_press = self.q_callback
         self.btn_manual.on_press = self.m_callback
         self.btn_debug.on_press = self.d_callback
+        self.btn_qlearning_load.on_press = self.ql_callback
 
     def q_callback(self):
         self.mode = "Q"
+        Clock.schedule_interval(self.update, 1.0/20.0)
+        self.world = World("R")
+        self.kc = KeyboardControl(self.world)
+        self.disable_buttons()
+
+    def ql_callback(self):
+        self.mode = "L"
         Clock.schedule_interval(self.update, 1.0/20.0)
         self.world = World("R")
         self.kc = KeyboardControl(self.world)
@@ -120,7 +130,7 @@ class WorldManip(Widget):
 
     def update(self, dt):
         if self.world is not None:
-            if self.mode == "M" or self.mode == "Q":
+            if self.mode == "M" or self.mode == "Q" or self.mode == "L":
                 _temp_state = np.zeros((1, 1, 4, 3), dtype='int32')
 
                 mp_lock.acquire()
@@ -132,6 +142,11 @@ class WorldManip(Widget):
                 if not self.active and self.mode == "Q":
                     self.active = True
                     self.q_process = multiprocessing.Process(target=self.run_episodes)
+                    self.q_process.start()
+
+                if not self.active and self.mode == "L":
+                    self.active = True
+                    self.q_process = multiprocessing.Process(target=self.run_loaded_agent)
                     self.q_process.start()
             else:
                 lower_cv_color = self.calculate_debug_colors(self.lower_color)
@@ -178,7 +193,7 @@ class WorldManip(Widget):
         s1_middle_thirds = beginning_state[0][0][[0, 1, 2, 3], [1, 1, 1, 1]]
         terminal = 0
 
-        #TODO: STEP 1
+        #TODO: STEP 1: Fill with random weights
         for step in range(replay_size):
             print(step)
 
@@ -226,7 +241,7 @@ class WorldManip(Widget):
 
         running_loss = []
 
-        #TODO: STEP 2
+        #TODO: STEP 2: Optimize network
         for i in range(max_iter):
             mp_lock.acquire()
             state = self.last_state.get_last_state()
@@ -235,7 +250,6 @@ class WorldManip(Widget):
             action = agent.choose_action(state, epsilon)  # choose an action using epsilon-greedy policy
 
             # get the new state, reward and terminal value from world
-
             self.world.act(action)
             sleep(0.2)
 
@@ -280,12 +294,46 @@ class WorldManip(Widget):
         print("Testing whether optimal path is learned ... set rover to start.\n")
         self.reset_rover_to_start(s1_middle_thirds)
 
-        #TODO: STEP 3
+        filename = "agent_width-{}-height-{}-discount-{}-lr-{}-batch-{}.npz".format(input_width,
+                                                                                    input_height,
+                                                                                    discount,
+                                                                                    learn_rate,
+                                                                                    batch_size)
+        agent.save(filename)
+
+        #TODO: STEP 3: Test
+        self.test_agent(agent, input_height, input_width)
+
+    def run_loaded_agent(self):
+        input_width = 3
+        input_height = 4
+        n_actions = 2
+        discount = 0.9
+        learn_rate = .005
+        batch_size = 4
+        rng = np.random
+        filename = "agent_width-{}-height-{}-discount-{}-lr-{}-batch-{}.npz".format(input_width,
+                                                                                    input_height,
+                                                                                    discount,
+                                                                                    learn_rate,
+                                                                                    batch_size)
+
+        agent_obj = DeepQLearner(input_width, input_height, n_actions, discount, learn_rate, batch_size, rng)
+
+        try:
+            agent_obj.load(filename)
+        except:
+            print "Failed to Load file. Aborting."
+            return
+
+        self.test_agent(agent_obj, input_height, input_width)
+
+    def test_agent(self, agent, input_height, input_width):
         max_test_iter = 12
         shortest_path = 5
         terminal = 0
-        j = 0
 
+        j = 0
         mp_lock.acquire()
         state = self.last_state.get_last_state()
         mp_lock.release()
@@ -293,7 +341,7 @@ class WorldManip(Widget):
         paths = np.zeros((max_test_iter + 1, 1, 1, input_height, input_width), dtype='int32')
         paths[j] = state
 
-        #Begin test phase
+        # Begin test phase
         while terminal == 0:
             action = agent.choose_action(state, 0)
 
@@ -313,7 +361,6 @@ class WorldManip(Widget):
             if j == max_test_iter and reward < 10:
                 print('not successful, no reward found after {} moves').format(max_test_iter)
                 terminal = 1
-
         if j <= shortest_path:
             print('success!')
             for i in range(j):
@@ -357,10 +404,12 @@ class WorldManip(Widget):
     def reset_rover_to_start(self, s1_middle_thirds):
         print s1_middle_thirds
         sleep(1)
-        mp_lock.acquire()
+
         # Get middle thirds of each color state
+        mp_lock.acquire()
         sc = self.last_state.get_last_state()[0][0][[0, 1, 2, 3], [1, 1, 1, 1]]
         mp_lock.release()
+
         while (not np.array_equal(sc, s1_middle_thirds)):
             t = Thread(target=self.world.rover.turn_right, args=(0.1, 0.5))
             t.start()

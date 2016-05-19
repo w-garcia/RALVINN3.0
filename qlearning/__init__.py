@@ -3,7 +3,6 @@ import lasagne
 import numpy as np
 import theano.tensor as t
 
-
 class DeepQLearner:
 
     """
@@ -147,3 +146,11 @@ class DeepQLearner:
 
         weights = lasagne.layers.get_all_param_values(self.l_out)[0]
         return weights
+
+    def save(self, filename):
+        np.savez(filename, *lasagne.layers.get_all_param_values(self.l_out))
+
+    def load(self, filename):
+        with np.load(filename) as f:
+            param_values = [f['arr_%d' % i] for i in range(len(f.files))]
+        lasagne.layers.set_all_param_values(self.l_out, param_values)
