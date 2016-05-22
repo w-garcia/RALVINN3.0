@@ -169,7 +169,7 @@ class WorldManip(Widget):
         batch_size = 4
         rng = np.random
         replay_size = 16
-        max_iter = 200
+        max_iter = 175
         epsilon = 0.2
         #TODO: Make this settable from GUI
         beginning_state = np.array([[[[0, 0, 0],    #pink
@@ -294,11 +294,12 @@ class WorldManip(Widget):
         print("Testing whether optimal path is learned ... set rover to start.\n")
         self.reset_rover_to_start(s1_middle_thirds)
 
-        filename = "agent_width-{}-height-{}-discount-{}-lr-{}-batch-{}.npz".format(input_width,
-                                                                                    input_height,
-                                                                                    discount,
-                                                                                    learn_rate,
-                                                                                    batch_size)
+        filename = "agent_max_iter-{}-width-{}-height-{}-discount-{}-lr-{}-batch-{}.npz".format(max_iter,
+                                                                                                input_width,
+                                                                                                input_height,
+                                                                                                discount,
+                                                                                                learn_rate,
+                                                                                                batch_size)
         agent.save(filename)
 
         #TODO: STEP 3: Test
@@ -308,15 +309,17 @@ class WorldManip(Widget):
         input_width = 3
         input_height = 4
         n_actions = 2
+        max_iter = 100
         discount = 0.9
         learn_rate = .005
         batch_size = 4
         rng = np.random
-        filename = "agent_width-{}-height-{}-discount-{}-lr-{}-batch-{}.npz".format(input_width,
-                                                                                    input_height,
-                                                                                    discount,
-                                                                                    learn_rate,
-                                                                                    batch_size)
+        filename = "agent_max_iter-{}-width-{}-height-{}-discount-{}-lr-{}-batch-{}.npz".format(max_iter,
+                                                                                                input_width,
+                                                                                                input_height,
+                                                                                                discount,
+                                                                                                learn_rate,
+                                                                                                batch_size)
 
         agent_obj = DeepQLearner(input_width, input_height, n_actions, discount, learn_rate, batch_size, rng)
 
@@ -330,8 +333,7 @@ class WorldManip(Widget):
 
     def test_agent(self, agent, input_height, input_width):
         max_test_iter = 12
-        shortest_path = 5
-        terminal = 0
+        shortest_path = 4
 
         j = 0
         mp_lock.acquire()
@@ -341,8 +343,10 @@ class WorldManip(Widget):
         paths = np.zeros((max_test_iter + 1, 1, 1, input_height, input_width), dtype='int32')
         paths[j] = state
 
+        rewards = []
+
         # Begin test phase
-        while terminal == 0:
+        while True:
             action = agent.choose_action(state, 0)
 
             self.world.act(action)
@@ -357,15 +361,24 @@ class WorldManip(Widget):
 
             j += 1
             paths[j] = state
+            rewards.append(reward)
 
             if j == max_test_iter and reward < 10:
                 print('not successful, no reward found after {} moves').format(max_test_iter)
-                terminal = 1
-        if j <= shortest_path:
-            print('success!')
-            for i in range(j):
-                print paths[i]
+                break
+            elif terminal == 1:
+                print('path found.')
+                break
 
+        reward_total = 0
+
+        for i in range(j + 1):
+            print paths[i]
+        for num in rewards:
+            reward_total += num
+        print "Total Reward: {}".format(reward_total)
+        if j <= shortest_path + 1 and reward_total >= 10:
+            print('success!')
         else:
             print('fail :(')
 
@@ -389,10 +402,10 @@ class WorldManip(Widget):
         elif state_prime[0][0][0][0] == 1 or state_prime[0][0][0][2] == 1:
             reward = 2
             terminal = 0
-        elif state_prime[0][0][3][1] == 1:
+        elif state_prime[0][0][1][1] == 1:
             reward = -10
             terminal = 0
-        elif state_prime[0][0][3][0] == 1 or state_prime[0][0][3][2] == 1:
+        elif state_prime[0][0][1][0] == 1 or state_prime[0][0][1][2] == 1:
             reward = -2
             terminal = 0
         else:
